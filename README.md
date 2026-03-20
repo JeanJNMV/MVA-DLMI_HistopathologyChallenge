@@ -1,0 +1,1 @@
+This repository contains the code for the Kaggle challenge "[Histopathology OOD Classification](https://www.kaggle.com/competitions/mva-dlmi-2026-histopathology-ood-classification#)" that serves as the final assignment for the course "Deep Learning for Medical Imaging" at MVA master's degree (ENS Paris-Saclay) and CentraleSupélec.
