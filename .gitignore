@@ -12,3 +12,6 @@ wheels/
 # Data files
 data/
 output/
+
+*.md
+!README.md
