@@ -4,7 +4,17 @@ version = "0.1.0"
 description = "[MVA/CentraleSupélec] Deep Learning for Medical Imaging Challenge on Histopathology Out-of-Distribution Classification."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "h5py>=3.16.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "torch>=2.10.0",
+    "torchmetrics>=1.9.0",
+    "torchvision>=0.25.0",
+    "tqdm>=4.67.3",
+]
 
 
 [build-system]
