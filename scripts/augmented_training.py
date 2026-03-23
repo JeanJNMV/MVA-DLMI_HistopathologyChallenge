@@ -1,10 +1,8 @@
 # %% [markdown]
-# # Training & Evaluation
-# Train a baseline model (DINOv2 + linear probe) and generate a submission file.
-#
-# This notebook mirrors the baseline from `getting_started.ipynb` but uses the `dlmi` package modules.
+# # Training & Evaluation (Argument-enabled)
 
 # %%
+import argparse
 import torch
 import torchmetrics
 import numpy as np
@@ -12,6 +10,7 @@ import h5py
 import warnings
 import torchvision.transforms.functional as F
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from dlmi.utils import set_seed, get_device
 from dlmi.dataset import H5Dataset, get_dataloader
@@ -21,18 +20,36 @@ from dlmi.train import train
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# %% [markdown]
-# ## Configuration
+# %%
+# ----------------------
+# Argument parsing
+# ----------------------
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--model_name",
+    type=str,
+    default="dinov2_vits14",
+    help="Model name (e.g., dinov2_vits14, dinov2_vitb14, ...)",
+)
+parser.add_argument(
+    "--num_unfreeze",
+    type=int,
+    default=2,
+    help="Number of transformer blocks to unfreeze",
+)
+args = parser.parse_args()
+
+MODEL_NAME = args.model_name
+NUM_UNFREEZE = args.num_unfreeze
 
 # %%
 # Paths
 TRAIN_PATH = "/workdir/martinije/dlmi_challenge/data/train.h5"
-VAL_PATH = "workdir/martinije/dlmi_challenge/data/val.h5"
+VAL_PATH = "/workdir/martinije/dlmi_challenge/data/val.h5"
 TEST_PATH = "/workdir/martinije/dlmi_challenge/data/test.h5"
-MODEL_SAVE_PATH = "/workdir/martinije/dlmi_challenge/models/augmented_dinov2.pth"
-SUBMISSION_PATH = (
-    "/workdir/martinije/dlmi_challenge/results/augmented_dinov2_submission.csv"
-)
+
+MODEL_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/models/augmented_{MODEL_NAME}_{NUM_UNFREEZE}_layers.pth"
+CURVES_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/figures/training_curves_{MODEL_NAME}_{NUM_UNFREEZE}_layers.png"
 
 # Hyperparameters
 SEED = 0
@@ -46,12 +63,10 @@ IMG_SIZE = 98
 set_seed(SEED)
 device = get_device()
 print(f"Device: {device}")
-
-# %% [markdown]
-# ## 1. Prepare datasets and precompute features
+print(f"Model: {MODEL_NAME}, Unfrozen blocks: {NUM_UNFREEZE}")
 
 # %%
-
+# Data
 train_preprocessing = get_ood_transform(size=IMG_SIZE, train=True)
 val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
 
@@ -63,22 +78,24 @@ val_loader = get_dataloader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 
 print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
 
-# %% [markdown]
-# ## 2. Train the linear probe
-
 # %%
-model = get_finetunable_dinov2("dinov2_vits14", num_blocks_to_unfreeze=2, device=device)
+# Model
+model = get_finetunable_dinov2(
+    MODEL_NAME, num_blocks_to_unfreeze=NUM_UNFREEZE, device=device
+)
+
 criterion = torch.nn.BCELoss()
-metric = torchmetrics.Accuracy("binary")
+metric = torchmetrics.Accuracy(task="binary")
 
 optimizer = torch.optim.Adam(
     [
-        {"params": model.backbone.parameters(), "lr": 1e-5},  # small LR for backbone
-        {"params": model.head.parameters(), "lr": LR},  # higher LR for head
+        {"params": model.backbone.parameters(), "lr": 1e-5},
+        {"params": model.head.parameters(), "lr": LR},
     ]
 )
 
 # %%
+# Training
 history = train(
     model,
     train_loader,
@@ -92,8 +109,8 @@ history = train(
     save_path=MODEL_SAVE_PATH,
 )
 
-
 # %%
+# Evaluation
 model.load_state_dict(torch.load(MODEL_SAVE_PATH, weights_only=True))
 model.eval()
 
@@ -114,6 +131,10 @@ acc = torchmetrics.functional.accuracy(
 print(f"Val Accuracy (no TTA): {acc:.4f}")
 
 
+# %%
+# TTA
+
+
 def tta_predict(model, img_tensor, device, n_augments=8):
     augmented = [
         img_tensor,
@@ -131,7 +152,6 @@ def tta_predict(model, img_tensor, device, n_augments=8):
     return preds.mean().item()
 
 
-model.load_state_dict(torch.load(MODEL_SAVE_PATH, weights_only=True))
 model.eval()
 
 tta_preds, tta_labels = [], []
@@ -142,16 +162,14 @@ with h5py.File(VAL_PATH, "r") as hdf:
         tta_labels.append(int(np.array(hdf[img_id]["label"])))
 
 acc = torchmetrics.functional.accuracy(
-    torch.tensor(tta_preds).round().int(), torch.tensor(tta_labels).int(), task="binary"
+    torch.tensor(tta_preds).round().int(),
+    torch.tensor(tta_labels).int(),
+    task="binary",
 )
 print(f"Val Accuracy with TTA: {acc:.4f}")
 
-# %% [markdown]
-# ### Training curves
-
 # %%
-import matplotlib.pyplot as plt
-
+# Training curves
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 axes[0].plot(history["train_loss"], label="Train")
@@ -167,6 +185,7 @@ axes[1].set_xlabel("Epoch")
 axes[1].legend()
 
 plt.tight_layout()
-plt.savefig(
-    "/workdir/martinije/dlmi_challenge/figures/training_curves_for_augmented_training.png"
-)
+plt.savefig(CURVES_SAVE_PATH)
+
+print(f"Model saved to: {MODEL_SAVE_PATH}")
+print(f"Training curves saved to: {CURVES_SAVE_PATH}")

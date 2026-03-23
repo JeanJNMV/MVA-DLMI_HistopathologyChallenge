@@ -17,4 +17,9 @@ source .venv/bin/activate
 cd /workdir/martinije/dlmi_challenge
 
 # Run script
-python scripts/augmented_training.py
+python scripts/augmented_training.py 
+python scripts/augmented_training.py --num-unfreeze 3
+python scripts/augmented_training.py --num-unfreeze 5
+python scripts/augmented_training.py --model-name dinov2_vitb14
+python scripts/augmented_training.py --model-name dinov2_vitb14 --num-unfreeze 3
+python scripts/augmented_training.py --model-name dinov2_vitb14 --num-unfreeze 5
