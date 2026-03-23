@@ -1,0 +1,191 @@
+# %% [markdown]
+# # Training & Evaluation (Argument-enabled)
+
+# %%
+import argparse
+import torch
+import torchmetrics
+import numpy as np
+import h5py
+import warnings
+import torchvision.transforms.functional as F
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+
+from dlmi.utils import set_seed, get_device
+from dlmi.dataset import H5Dataset, get_dataloader
+from dlmi.model import get_finetunable_dinov2
+from dlmi.transforms import get_ood_transform
+from dlmi.train import train
+
+warnings.filterwarnings("ignore", category=UserWarning)
+
+# %%
+# ----------------------
+# Argument parsing
+# ----------------------
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--model_name",
+    type=str,
+    default="dinov2_vits14",
+    help="Model name (e.g., dinov2_vits14, dinov2_vitb14, ...)",
+)
+parser.add_argument(
+    "--num_unfreeze",
+    type=int,
+    default=2,
+    help="Number of transformer blocks to unfreeze",
+)
+args = parser.parse_args()
+
+MODEL_NAME = args.model_name
+NUM_UNFREEZE = args.num_unfreeze
+
+# %%
+# Paths
+TRAIN_PATH = "/workdir/martinije/dlmi_challenge/data/train.h5"
+VAL_PATH = "/workdir/martinije/dlmi_challenge/data/val.h5"
+TEST_PATH = "/workdir/martinije/dlmi_challenge/data/test.h5"
+
+MODEL_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/models/augmented_{MODEL_NAME}_{NUM_UNFREEZE}_layers.pth"
+CURVES_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/figures/training_curves_{MODEL_NAME}_{NUM_UNFREEZE}_layers.png"
+
+# Hyperparameters
+SEED = 0
+BATCH_SIZE = 16
+LR = 0.001
+NUM_EPOCHS = 100
+PATIENCE = 10
+IMG_SIZE = 98
+
+# %%
+set_seed(SEED)
+device = get_device()
+print(f"Device: {device}")
+print(f"Model: {MODEL_NAME}, Unfrozen blocks: {NUM_UNFREEZE}")
+
+# %%
+# Data
+train_preprocessing = get_ood_transform(size=IMG_SIZE, train=True)
+val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
+
+train_ds = H5Dataset(TRAIN_PATH, transform=train_preprocessing, mode="train")
+val_ds = H5Dataset(VAL_PATH, transform=val_preprocessing, mode="train")
+
+train_loader = get_dataloader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = get_dataloader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+
+print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
+
+# %%
+# Model
+model = get_finetunable_dinov2(
+    MODEL_NAME, num_blocks_to_unfreeze=NUM_UNFREEZE, device=device
+)
+
+criterion = torch.nn.BCELoss()
+metric = torchmetrics.Accuracy(task="binary")
+
+optimizer = torch.optim.Adam(
+    [
+        {"params": model.backbone.parameters(), "lr": 1e-5},
+        {"params": model.head.parameters(), "lr": LR},
+    ]
+)
+
+# %%
+# Training
+history = train(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    criterion,
+    metric,
+    device,
+    num_epochs=NUM_EPOCHS,
+    patience=PATIENCE,
+    save_path=MODEL_SAVE_PATH,
+)
+
+# %%
+# Evaluation
+model.load_state_dict(torch.load(MODEL_SAVE_PATH, weights_only=True))
+model.eval()
+
+val_preds, val_labels = [], []
+with torch.no_grad():
+    for imgs, labels in tqdm(val_loader, desc="Val (no TTA)"):
+        imgs = imgs.to(device)
+        preds = model(imgs)
+        val_preds.append(preds.cpu())
+        val_labels.append(labels)
+
+val_preds = torch.cat(val_preds).squeeze()
+val_labels = torch.cat(val_labels).int()
+
+acc = torchmetrics.functional.accuracy(
+    val_preds.round().int(), val_labels, task="binary"
+)
+print(f"Val Accuracy (no TTA): {acc:.4f}")
+
+
+# %%
+# TTA
+
+
+def tta_predict(model, img_tensor, device, n_augments=8):
+    augmented = [
+        img_tensor,
+        F.hflip(img_tensor),
+        F.vflip(img_tensor),
+        F.rotate(img_tensor, 90),
+        F.rotate(img_tensor, 180),
+        F.rotate(img_tensor, 270),
+        F.hflip(F.rotate(img_tensor, 90)),
+        F.vflip(F.rotate(img_tensor, 90)),
+    ][:n_augments]
+    batch = torch.stack(augmented).to(device)
+    with torch.no_grad():
+        preds = model(batch)
+    return preds.mean().item()
+
+
+model.eval()
+
+tta_preds, tta_labels = [], []
+with h5py.File(VAL_PATH, "r") as hdf:
+    for img_id in tqdm(hdf.keys(), desc="Val TTA"):
+        img = val_preprocessing(torch.tensor(np.array(hdf[img_id]["img"])).float())
+        tta_preds.append(tta_predict(model, img, device))
+        tta_labels.append(int(np.array(hdf[img_id]["label"])))
+
+acc = torchmetrics.functional.accuracy(
+    torch.tensor(tta_preds).round().int(),
+    torch.tensor(tta_labels).int(),
+    task="binary",
+)
+print(f"Val Accuracy with TTA: {acc:.4f}")
+
+# %%
+# Training curves
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+axes[0].plot(history["train_loss"], label="Train")
+axes[0].plot(history["val_loss"], label="Val")
+axes[0].set_title("Loss")
+axes[0].set_xlabel("Epoch")
+axes[0].legend()
+
+axes[1].plot(history["train_metric"], label="Train")
+axes[1].plot(history["val_metric"], label="Val")
+axes[1].set_title("Accuracy")
+axes[1].set_xlabel("Epoch")
+axes[1].legend()
+
+plt.tight_layout()
+plt.savefig(CURVES_SAVE_PATH)
+
+print(f"Model saved to: {MODEL_SAVE_PATH}")
+print(f"Training curves saved to: {CURVES_SAVE_PATH}")

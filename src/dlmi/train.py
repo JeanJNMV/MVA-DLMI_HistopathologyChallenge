@@ -9,8 +9,8 @@ def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
     losses, metrics = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Training"):
         optimizer.zero_grad()
-        pred = model(x.to(device))
-        loss = criterion(pred, y.to(device))
+        pred = model(x.to(device)).squeeze(1)
+        loss = criterion(pred, y.float().to(device))
         loss.backward()
         optimizer.step()
         losses.extend([loss.item()] * len(y))
@@ -25,8 +25,8 @@ def validate(model, dataloader, criterion, metric, device):
     model.eval()
     losses, metrics = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Validating"):
-        pred = model(x.to(device))
-        loss = criterion(pred, y.to(device))
+        pred = model(x.to(device)).squeeze(1)
+        loss = criterion(pred, y.float().to(device))
         losses.extend([loss.item()] * len(y))
         m = metric(pred.cpu(), y.int().cpu())
         metrics.extend([m.item()] * len(y))

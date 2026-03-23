@@ -11,7 +11,10 @@ wheels/
 
 # Data files
 data/
+*.zip
 output/
 
 *.md
 !README.md
+
+*copy*
