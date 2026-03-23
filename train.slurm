@@ -9,13 +9,12 @@
 #SBATCH --mem=16G
 
 # Load environment
-module load python/3.10
-module load cuda
+module load miniconda3/25.5.1/none-none
 
 source .venv/bin/activate
 
 # Move to project directory
-cd /workdir/martinije
+cd /workdir/martinije/dlmi_challenge
 
 # Run script
-python notebooks/augmented_training.py
+python scripts/augmented_training.py

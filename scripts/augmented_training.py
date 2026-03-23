@@ -5,11 +5,15 @@
 # This notebook mirrors the baseline from `getting_started.ipynb` but uses the `dlmi` package modules.
 
 # %%
-import torch, torchmetrics, numpy as np, h5py, warnings
+import torch
+import torchmetrics
+import numpy as np
+import h5py
+import warnings
 import torchvision.transforms.functional as F
 from tqdm import tqdm
 
-from dlmi.utils import set_seed, get_device, save_submission
+from dlmi.utils import set_seed, get_device
 from dlmi.dataset import H5Dataset, get_dataloader
 from dlmi.model import get_finetunable_dinov2
 from dlmi.transforms import get_ood_transform
@@ -47,7 +51,6 @@ print(f"Device: {device}")
 # ## 1. Prepare datasets and precompute features
 
 # %%
-from dlmi.transforms import get_ood_transform
 
 train_preprocessing = get_ood_transform(size=IMG_SIZE, train=True)
 val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
@@ -91,6 +94,26 @@ history = train(
 
 
 # %%
+model.load_state_dict(torch.load(MODEL_SAVE_PATH, weights_only=True))
+model.eval()
+
+val_preds, val_labels = [], []
+with torch.no_grad():
+    for imgs, labels in tqdm(val_loader, desc="Val (no TTA)"):
+        imgs = imgs.to(device)
+        preds = model(imgs)
+        val_preds.append(preds.cpu())
+        val_labels.append(labels)
+
+val_preds = torch.cat(val_preds).squeeze()
+val_labels = torch.cat(val_labels).int()
+
+acc = torchmetrics.functional.accuracy(
+    val_preds.round().int(), val_labels, task="binary"
+)
+print(f"Val Accuracy (no TTA): {acc:.4f}")
+
+
 def tta_predict(model, img_tensor, device, n_augments=8):
     augmented = [
         img_tensor,
@@ -144,23 +167,6 @@ axes[1].set_xlabel("Epoch")
 axes[1].legend()
 
 plt.tight_layout()
-plt.savefig("../figures/training_curves_for_augmented_training.png")
-
-# %% [markdown]
-# ## 3. Generate test predictions
-
-# %%
-test_ids, test_preds = [], []
-
-with h5py.File(TEST_PATH, "r") as hdf:
-    for test_id in tqdm(hdf.keys(), desc="Test TTA"):
-        img = val_preprocessing(torch.tensor(np.array(hdf[test_id]["img"])).float())
-        pred = tta_predict(model, img, device)
-        test_ids.append(int(test_id))
-        test_preds.append(pred)
-
-submission = save_submission(test_ids, test_preds, SUBMISSION_PATH)
-print(f"Submission saved to {SUBMISSION_PATH} ({len(submission)} rows)")
-submission.head()
-
-# %%
+plt.savefig(
+    "/workdir/martinije/dlmi_challenge/figures/training_curves_for_augmented_training.png"
+)
