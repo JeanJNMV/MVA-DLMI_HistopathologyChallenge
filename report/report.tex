@@ -9,10 +9,8 @@
 
 \title[Histopathology OOD Classification]{MVA DLMI 2026 - Histopathology OOD Classification} 
 
-\midlauthor{\Name{Ayoub El Kbadi\midljointauthortext{Contributed equally}\nametag{$^{1,2}$}} \Email{ayoub.kbdi@gmail.com}\\
-\addr $^{1}$ CentraleSupélec \\
-\addr $^{2}$ ENS Paris-Saclay \AND  
-\Name{Jean-Vincent Martini\midlotherjointauthor\nametag{$^{1,2}$}} \Email{jean-vincent.martini@ens-paris-saclay.fr}\\
+\midlauthor{\Name{Ayoub El Kbadi\nametag{$^{1,2}$}} \Email{ayoub.kbdi@gmail.com} \AND  
+\Name{Jean-Vincent Martini\nametag{$^{1,2}$}} \Email{jean-vincent.martini@ens-paris-saclay.fr}\\
 \addr $^{1}$ CentraleSupélec \\
 \addr $^{2}$ ENS Paris-Saclay \\
 \Name{Team: TODO}
@@ -32,10 +30,8 @@ The 5-page report should include the following sections (in this specific order)
 ● Section 1: Architecture and methodological components (5 points). Regardless of the
 performance achieved, we will reward the research efforts and creativity put into the
 architecture (e.g., model definition, modules, functions). You are expected to:
-1. Explain the motivation and intuition behind your architecture. How did you come
-up with new models? What is it intended to capture? Did you discard others?
-2. Rigorously report your experiments about the impact of various combinations of
-blocks, architectures on predictive performance, and, depending on the model,
+1. Explain the motivation and intuition behind your architecture. How did you come up with new models? What is it intended to capture? Did you discard others?
+2. Rigorously report your experiments about the impact of various combinations of blocks, architectures on predictive performance, and, depending on the model,
 how you tackled the dataset.
 ● Section 2: Model tuning and comparison (4 points). You are expected to:
 ○ Compare and prepare an ablation study with the different components of your
@@ -56,18 +52,26 @@ clearly deliver the solution, providing detailed explanations of each step.
 \end{comment}
 
 \begin{abstract}
-This is a great paper and it has a concise abstract.
+This is a great paper and it has a concise abstract. The full code is available at \url{https://github.com/JeanJNMV/MVA-DLMI_Histopathology_Challenge}.
 \end{abstract} 
 
 \begin{keywords}
 List of keywords, comma separated.
 \end{keywords}
 
-\section{Introduction \& Problem Definition}
-TODO
- 
+\section{Introduction and Problem Definition}
+
+Computational pathology has emerged as a promising application of deep learning, with transformer-based models achieving expert-level performance on a variety of tissue classification tasks. In clinical practice, however, models are often trained on data from a limited number of institutions and subsequently deployed in hospitals where staining protocols, scanners, and tissue preparation procedures differ substantially. This creates a domain shift, a discrepancy between the training distribution and the target distribution, that can cause a significant drop in classification accuracy, even when the underlying tissue morphology is similar. 
+
+This challenge addresses precisely this problem. The task is the binary classification of patches that must be labeled as either tumor or non-tumor. The training set gathers images from three different medical centers, while the validation and test sets originate from two additional, unseen centers. The appearance of the images varies significantly across centers due to differences in staining protocols, imaging equipment, and tissue preparation procedures. 
+
+Naively training a classifier on the source centers and evaluating on the target centers reveals a substantial performance gap, motivating the need for domain generalization strategies. To address this, we explore a variety of approaches, including data augmentation techniques, stain normalization methods, fine-tuning strategies and test-time adaptation methods. Together, these components form a pipeline designed to maximize generalization to unseen acquisition centers.
+
 \section{Architecture and Methodological Components}
 \subsection{Baseline}
+
+The baseline model is composed of a feature extractor and a linear probe. Frozen embeddings are extracted once from all images using DINOv2, a Vision Transformer (VT) pretrained via self-supervised self-distillation on a large image corpus \cite{oquab2023dinov2}. This design is computationally efficient and avoids overfitting, as gradient updates are confined to the lightweight linear classification head trained on top of the fixed representations. The preprocessing is very minimal, consisting of resizing the images using ImageNet statistics \cite{deng2009imagenet}, consistent with DINOv2's pretraining regime. While this baseline achieves reasonable in-distribution performance, it provides no mechanism to handle the covariate shift introduced by unseen acquisition centers, motivating the components described in the following sections.
+
 \subsection{TODO: our methods}
 
 \section{Model Tuning and Comparison}
