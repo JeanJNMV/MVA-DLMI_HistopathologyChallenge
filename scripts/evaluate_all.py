@@ -5,7 +5,9 @@ import torch
 import warnings
 
 from dlmi.utils import set_seed, get_device
-from dlmi.dataset import H5Dataset, get_dataloader
+from torch.utils.data import DataLoader
+
+from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
 from dlmi.transforms import get_ood_transform
 from dlmi.test import evaluate_no_tta, evaluate_with_tta
@@ -36,7 +38,7 @@ print(f"Device: {device}")
 # %%
 val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
 val_ds = H5Dataset(VAL_PATH, transform=val_preprocessing, mode="train")
-val_loader = get_dataloader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 print(f"Val: {len(val_ds)} samples")
 
 # %% [markdown]

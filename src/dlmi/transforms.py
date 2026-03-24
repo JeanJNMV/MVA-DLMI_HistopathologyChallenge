@@ -1,22 +1,39 @@
 import torch
-import numpy as np
 import torchvision.transforms as T
-import torchvision.transforms.functional as F
 
 
 def get_baseline_transform(size=98):
-    """Baseline preprocessing: resize to a fixed square size."""
+    """Return a baseline preprocessing transform that resizes to a fixed square.
+
+    Parameters
+    ----------
+    size : int, optional
+        Target height and width in pixels.
+
+    Returns
+    -------
+    torchvision.transforms.Resize
+        Resize transform.
+    """
     return T.Resize((size, size))
 
 
 class HEDJitter:
-    """
-    Randomly perturbs H&E stain intensities in HED color space.
-    This directly simulates inter-center staining variability.
+    """Randomly perturb H&E stain intensities in HED color space.
 
-    Reference: Tellez et al., "Quantifying the effects of data augmentation
-    and stain color normalization in convolutional neural networks for
-    computational pathology", Medical Image Analysis 2019.
+    Simulates inter-center staining variability by applying random affine
+    perturbations to each channel of the HED decomposition.
+
+    Parameters
+    ----------
+    theta : float, optional
+        Magnitude of stain perturbation. 0.05 is subtle, 0.15 is strong.
+
+    References
+    ----------
+    Tellez et al., "Quantifying the effects of data augmentation and stain
+    color normalization in convolutional neural networks for computational
+    pathology", Medical Image Analysis, 2019.
     """
 
     # RGB -> HED color deconvolution matrix (standard H&E)
@@ -31,10 +48,30 @@ class HEDJitter:
     HED2RGB = torch.linalg.inv(RGB2HED)
 
     def __init__(self, theta=0.05):
-        """theta: magnitude of stain perturbation (0.05 is subtle, 0.15 is strong)"""
+        """Initialize HEDJitter.
+
+        Parameters
+        ----------
+        theta : float, optional
+            Magnitude of stain perturbation.
+        """
         self.theta = theta
 
     def __call__(self, img: torch.Tensor) -> torch.Tensor:
+        """Apply random HED stain jittering to an image.
+
+        Parameters
+        ----------
+        img : torch.Tensor
+            Image tensor of shape "(C, H, W)" with values in "[0, 255]"
+            or "[0, 1]".
+
+        Returns
+        -------
+        torch.Tensor
+            Augmented image tensor of shape "(C, H, W)" clamped to
+            "[0, 1]".
+        """
         # img: (C, H, W) float32, values in [0, 255] or [0, 1]
         # Normalize to [0,1] if needed
         if img.max() > 1.0:
@@ -60,7 +97,23 @@ class HEDJitter:
 
 
 def get_ood_transform(size=98, train=True):
-    """OOD-robust transform with stain augmentation for train, clean for val/test."""
+    """Return an OOD-robust transform pipeline.
+
+    For training, applies resize, HED stain jittering, random flips, and
+    random rotation. For validation and test, applies resize only.
+
+    Parameters
+    ----------
+    size : int, optional
+        Target height and width in pixels.
+    train : bool, optional
+        If "True", include augmentation transforms.
+
+    Returns
+    -------
+    torchvision.transforms.Compose or torchvision.transforms.Resize
+        Composed transform pipeline.
+    """
     if train:
         return T.Compose(
             [

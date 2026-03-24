@@ -4,7 +4,30 @@ from tqdm.notebook import tqdm
 
 
 def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
-    """Run one training epoch. Returns average loss and metric."""
+    """Run one training epoch.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model to train.
+    dataloader : torch.utils.data.DataLoader
+        Training dataloader yielding "(inputs, labels)" batches.
+    optimizer : torch.optim.Optimizer
+        Optimizer used for parameter updates.
+    criterion : callable
+        Loss function.
+    metric : callable
+        Metric function returning a scalar score.
+    device : torch.device
+        Device to run training on.
+
+    Returns
+    -------
+    avg_loss : float
+        Mean training loss over the epoch.
+    avg_metric : float
+        Mean training metric over the epoch.
+    """
     model.train()
     losses, metrics = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Training"):
@@ -21,7 +44,28 @@ def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
 
 @torch.no_grad()
 def validate(model, dataloader, criterion, metric, device):
-    """Run validation. Returns average loss and metric."""
+    """Run validation.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model to evaluate.
+    dataloader : torch.utils.data.DataLoader
+        Validation dataloader yielding "(inputs, labels)" batches.
+    criterion : callable
+        Loss function.
+    metric : callable
+        Metric function returning a scalar score.
+    device : torch.device
+        Device to run evaluation on.
+
+    Returns
+    -------
+    avg_loss : float
+        Mean validation loss.
+    avg_metric : float
+        Mean validation metric.
+    """
     model.eval()
     losses, metrics = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Validating"):
@@ -47,8 +91,37 @@ def train(
 ):
     """Full training loop with early stopping.
 
-    Returns:
-        dict with training history (train_losses, val_losses, train_metrics, val_metrics).
+    Training stops when the validation loss does not improve for
+    "patience" consecutive epochs.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model to train.
+    train_dataloader : torch.utils.data.DataLoader
+        Training dataloader.
+    val_dataloader : torch.utils.data.DataLoader
+        Validation dataloader.
+    optimizer : torch.optim.Optimizer
+        Optimizer used for parameter updates.
+    criterion : callable
+        Loss function.
+    metric : callable
+        Metric function returning a scalar score.
+    device : torch.device
+        Device to run training on.
+    num_epochs : int, optional
+        Maximum number of training epochs.
+    patience : int, optional
+        Number of epochs without improvement before stopping.
+    save_path : str or None, optional
+        Path to save the best model weights. No saving when "None".
+
+    Returns
+    -------
+    dict
+        Training history with keys "'train_loss'", "'val_loss'",
+        "'train_metric'", and "'val_metric'".
     """
     history = {
         "train_loss": [],

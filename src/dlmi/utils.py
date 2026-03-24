@@ -5,7 +5,15 @@ import pandas as pd
 
 
 def set_seed(seed=0):
-    """Set random seed for reproducibility."""
+    """Set random seed for reproducibility.
+
+    Seeds Python, NumPy, and PyTorch (CPU and CUDA) random generators.
+
+    Parameters
+    ----------
+    seed : int, optional
+        Random seed value.
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -14,7 +22,15 @@ def set_seed(seed=0):
 
 
 def get_device():
-    """Return the best available torch device."""
+    """Return the best available torch device.
+
+    Checks for CUDA, then MPS, and falls back to CPU.
+
+    Returns
+    -------
+    torch.device
+        Selected device.
+    """
     if torch.cuda.is_available():
         return torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -25,11 +41,21 @@ def get_device():
 def save_submission(ids, preds, path, threshold=0.5):
     """Save predictions to a CSV submission file.
 
-    Args:
-        ids: list of image IDs
-        preds: list/array of predicted probabilities
-        path: output CSV path
-        threshold: decision threshold for binary classification
+    Parameters
+    ----------
+    ids : list
+        Image IDs.
+    preds : list or numpy.ndarray
+        Predicted probabilities.
+    path : str
+        Output CSV file path.
+    threshold : float, optional
+        Decision threshold for binary classification.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with columns "'ID'" and "'Pred'".
     """
     df = pd.DataFrame(
         {"ID": ids, "Pred": [int(p > threshold) for p in preds]}

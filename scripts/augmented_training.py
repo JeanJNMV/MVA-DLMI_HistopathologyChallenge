@@ -6,8 +6,10 @@ import warnings
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+from torch.utils.data import DataLoader
+
 from dlmi.utils import set_seed, get_device
-from dlmi.dataset import H5Dataset, get_dataloader
+from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
 from dlmi.transforms import get_ood_transform
 from dlmi.train import train
@@ -69,8 +71,8 @@ val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
 train_ds = H5Dataset(TRAIN_PATH, transform=train_preprocessing, mode="train")
 val_ds = H5Dataset(VAL_PATH, transform=val_preprocessing, mode="train")
 
-train_loader = get_dataloader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-val_loader = get_dataloader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 
 print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
 
