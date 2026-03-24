@@ -1,0 +1,96 @@
+# %%
+import os
+import json
+import torch
+import warnings
+
+from dlmi.utils import set_seed, get_device
+from dlmi.dataset import H5Dataset, get_dataloader
+from dlmi.model import get_finetunable_dinov2
+from dlmi.transforms import get_ood_transform
+from dlmi.test import evaluate_no_tta, evaluate_with_tta
+
+warnings.filterwarnings("ignore", category=UserWarning)
+
+# %% [markdown]
+# ## Configuration
+
+# %%
+VAL_PATH = "/workdir/martinije/dlmi_challenge/data/val.h5"
+MODELS_DIR = "/workdir/martinije/dlmi_challenge/models"
+RESULTS_DIR = "/workdir/martinije/dlmi_challenge/results"
+IMG_SIZE = 98
+BATCH_SIZE = 16
+SEED = 0
+
+MODEL_NAMES = ["dinov2_vits14", "dinov2_vitb14", "dinov2_vitl14"]
+NB_LAYERS_LIST = [2, 3, 5, 7, 10]
+
+set_seed(SEED)
+device = get_device()
+print(f"Device: {device}")
+
+# %% [markdown]
+# ## Prepare validation data
+
+# %%
+val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
+val_ds = H5Dataset(VAL_PATH, transform=val_preprocessing, mode="train")
+val_loader = get_dataloader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+print(f"Val: {len(val_ds)} samples")
+
+# %% [markdown]
+# ## Run evaluation over all model checkpoints
+
+# %%
+results_no_tta = {}
+results_tta = {}
+
+for model_name in MODEL_NAMES:
+    for nb_layers in NB_LAYERS_LIST:
+        key = f"{model_name}_{nb_layers}_layers"
+        model_path = os.path.join(MODELS_DIR, f"augmented_{key}.pth")
+
+        if not os.path.exists(model_path):
+            print(f"[SKIP] {model_path} not found")
+            continue
+
+        print(f"\n{'=' * 60}")
+        print(f"Evaluating: {key}")
+        print(f"{'=' * 60}")
+
+        model = get_finetunable_dinov2(
+            model_name, num_blocks_to_unfreeze=nb_layers, device=device
+        )
+        model.load_state_dict(torch.load(model_path, weights_only=True))
+        model.eval()
+
+        # Without TTA
+        acc_no_tta = evaluate_no_tta(model, val_loader, device)
+        results_no_tta[key] = acc_no_tta
+        print(f"  No TTA accuracy: {acc_no_tta:.4f}")
+
+        # With TTA
+        acc_tta = evaluate_with_tta(model, VAL_PATH, val_preprocessing, device)
+        results_tta[key] = acc_tta
+        print(f"  TTA accuracy:    {acc_tta:.4f}")
+
+print(f"\n\nEvaluated {len(results_no_tta)} models.")
+
+# %% [markdown]
+# ## Save results to JSON
+
+# %%
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+no_tta_path = os.path.join(RESULTS_DIR, "val_results_no_tta.json")
+tta_path = os.path.join(RESULTS_DIR, "val_results_tta.json")
+
+with open(no_tta_path, "w") as f:
+    json.dump(results_no_tta, f, indent=2)
+
+with open(tta_path, "w") as f:
+    json.dump(results_tta, f, indent=2)
+
+print(f"Saved: {no_tta_path}")
+print(f"Saved: {tta_path}")
