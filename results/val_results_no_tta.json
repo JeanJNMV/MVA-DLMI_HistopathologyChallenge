@@ -8,5 +8,10 @@
   "dinov2_vitb14_3_layers": 0.9196653962135315,
   "dinov2_vitb14_5_layers": 0.9303231835365295,
   "dinov2_vitb14_7_layers": 0.9369699954986572,
-  "dinov2_vitb14_10_layers": 0.9316124320030212
+  "dinov2_vitb14_10_layers": 0.9316124320030212,
+  "dinov2_vitl14_2_layers": 0.9329016804695129,
+  "dinov2_vitl14_3_layers": 0.9340190291404724,
+  "dinov2_vitl14_5_layers": 0.9464817643165588,
+  "dinov2_vitl14_7_layers": 0.9446482062339783,
+  "dinov2_vitl14_10_layers": 0.9459947347640991
 }
