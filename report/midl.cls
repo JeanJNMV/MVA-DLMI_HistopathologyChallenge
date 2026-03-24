@@ -42,7 +42,7 @@
 \renewcommand*\@jmlrenddoc{\FloatBarrier\old@jmlrenddoc}
 }
 
-\jmlrproceedings{PMLR}{Proceedings of Machine Learning Research}
+\jmlrproceedings{PMLR}{Deep Learning in Medical Imaging}
 
 \renewcommand\cite{\citep}
 
