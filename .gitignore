@@ -13,6 +13,7 @@ wheels/
 data/
 *.zip
 output/
+models/
 
 *.md
 !README.md
