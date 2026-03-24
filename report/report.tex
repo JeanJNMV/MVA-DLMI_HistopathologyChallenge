@@ -1,5 +1,6 @@
 \documentclass{midl} 
 
+\usepackage{comment}
 \usepackage{mwe} % to get dummy images
 \jmlrvolume{}
 \jmlryear{2026}
@@ -13,31 +14,65 @@
 \addr $^{2}$ ENS Paris-Saclay \AND  
 \Name{Jean-Vincent Martini\midlotherjointauthor\nametag{$^{1,2}$}} \Email{jean-vincent.martini@ens-paris-saclay.fr}\\
 \addr $^{1}$ CentraleSupélec \\
-\addr $^{2}$ ENS Paris-Saclay
-} 
+\addr $^{2}$ ENS Paris-Saclay \\
+\Name{Team: TODO}
+}  
 
 \begin{document}
 
 \maketitle
 
+\begin{comment}
+  
+Report (11 points)
+The 5-page report should include the following sections (in this specific order):
+● Introduction: (1 point)
+○ Explain the problem
+○ Put the chosen components in context
+● Section 1: Architecture and methodological components (5 points). Regardless of the
+performance achieved, we will reward the research efforts and creativity put into the
+architecture (e.g., model definition, modules, functions). You are expected to:
+1. Explain the motivation and intuition behind your architecture. How did you come
+up with new models? What is it intended to capture? Did you discard others?
+2. Rigorously report your experiments about the impact of various combinations of
+blocks, architectures on predictive performance, and, depending on the model,
+how you tackled the dataset.
+● Section 2: Model tuning and comparison (4 points). You are expected to:
+○ Compare and prepare an ablation study with the different components of your
+method.
+○ Explain preprocessing steps or other tricks that helped your model perform well
+for this problem and facilitated your training.
+○ Report the performance on the different sets, the hyperparameters of your
+method as well as the score on the test set (given by Kaggle).
+○ Discuss about any additional models that you have tested but did not perform
+well.
+○ We will also assess the quality of the internal validation procedure. It needs to be
+unbiased so that there is only minimal discrepancy between the internal
+validation and the challenge test set. It needs to be clearly described in the
+report.
+● Report readability (1 point)
+Report organization and readability will be worth 1 point. Best submissions will
+clearly deliver the solution, providing detailed explanations of each step.
+\end{comment}
+
 \begin{abstract}
 This is a great paper and it has a concise abstract.
-\end{abstract}
+\end{abstract} 
 
 \begin{keywords}
 List of keywords, comma separated.
 \end{keywords}
 
-\section{Introduction} 
+\section{Introduction \& Problem Definition}
 TODO
  
-\section{Problem Formulation \& Dataset}
- 
-\section{Proposed Approach}
-  \subsection{Baseline}
+\section{Architecture and Methodological Components}
+\subsection{Baseline}
 \subsection{TODO: our methods}
 
-\section{Experiments \& Results}
+\section{Model Tuning and Comparison}
+\subsection{Experimental Setup}
+\subsection{Experiments and Results}
 
 \section{Conclusion}
 
