@@ -51,7 +51,7 @@ class H5Dataset(Dataset):
         img : torch.Tensor
             Image tensor of shape "(C, H, W)".
         label : numpy.ndarray or None
-            Label array when "mode='train'", otherwise "None".
+            Label array when "mode='train'", otherwise only the image is returned.
         """
         img_id = self.image_ids[idx]
         with h5py.File(self.dataset_path, "r") as hdf:
@@ -61,7 +61,10 @@ class H5Dataset(Dataset):
             )
         if self.transform:
             img = self.transform(img)
-        return img, label
+        if self.mode == "train":
+            return img, label
+        else:
+            return img
 
 
 class PrecomputedDataset(Dataset):
