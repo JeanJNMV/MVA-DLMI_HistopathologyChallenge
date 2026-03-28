@@ -64,15 +64,45 @@ List of keywords, comma separated.
 Computational pathology has emerged as a promising application of deep learning, with transformer-based models achieving expert-level performance on a variety of tissue classification tasks. In clinical practice, however, models are often trained on data from a limited number of institutions and subsequently deployed in hospitals where staining protocols, scanners, and tissue preparation procedures differ substantially. This creates a domain shift, a discrepancy between the training distribution and the target distribution, that can cause a significant drop in classification accuracy, even when the underlying tissue morphology is similar. 
 
 This challenge addresses precisely this problem. The task is the binary classification of patches that must be labeled as either tumor or non-tumor. The training set gathers images from three different medical centers, while the validation and test sets originate from two additional, unseen centers. The appearance of the images varies significantly across centers due to differences in staining protocols, imaging equipment, and tissue preparation procedures. 
-
 Naively training a classifier on the source centers and evaluating on the target centers reveals a substantial performance gap, motivating the need for domain generalization strategies. To address this, we explore a variety of approaches, including data augmentation techniques, stain normalization methods, fine-tuning strategies and test-time adaptation methods. Together, these components form a pipeline designed to maximize generalization to unseen acquisition centers.
 
 \section{Architecture and Methodological Components}
-\subsection{Baseline}
+\paragraph{The Baseline.}
 
-The baseline model is composed of a feature extractor and a linear probe. Frozen embeddings are extracted once from all images using DINOv2, a Vision Transformer (VT) pretrained via self-supervised self-distillation on a large image corpus \cite{oquab2023dinov2}. This design is computationally efficient and avoids overfitting, as gradient updates are confined to the lightweight linear classification head trained on top of the fixed representations. The preprocessing is very minimal, consisting of resizing the images using ImageNet statistics \cite{deng2009imagenet}, consistent with DINOv2's pretraining regime. While this baseline achieves reasonable in-distribution performance, it provides no mechanism to handle the covariate shift introduced by unseen acquisition centers, motivating the components described in the following sections.
+The baseline model is composed of a feature extractor and a linear probe. Frozen embeddings are extracted once from all images using the small version of the DINOv2, a Vision Transformer (VT) pretrained via self-supervised self-distillation on a large image corpus \cite{oquab2023dinov2}. This design is computationally efficient and avoids overfitting, as gradient updates are confined to the lightweight linear classification head trained on top of the fixed representations. The preprocessing is very minimal, consisting of resizing the images using ImageNet statistics \cite{deng2009imagenet}, consistent with DINOv2's pretraining regime. While this baseline achieves reasonable in-distribution performance, it provides no mechanism to handle the covariate shift introduced by unseen acquisition centers, motivating the components described in the following sections.
 
-\subsection{TODO: our methods}
+\paragraph{The Models.}
+
+We retained DINOv2 \cite{oquab2023dinov2} as the main feature extractor, evaluating its small (\texttt{dinov2\_vits14}), base (\texttt{dinov2\_vitb14}), and large (\texttt{dinov2\_vitl14}) variants to study the trade-off between capacity and computational cost. Beyond the frozen linear probe baseline, we applied a partial fine-tuning strategy in which the backbone is initially frozen, then the last $N$ transformer blocks and final layer normalization are unfrozen and trained jointly with the classification head. We varied $N \in {2, 3, 5, 7, 10}$, progressively allowing more of the backbone to adapt while preserving pretrained weights. The classification head is a single linear layer with a sigmoid output for binary prediction. 
+
+Convolutional architectures such as EfficientNet \cite{tan2019efficientnet} and ConvNeXt \cite{liu2022convnet}  were also considered as alternative backbones. EfficientNet provides a favorable accuracy-to-efficiency trade-off through compound scaling, while ConvNeXt modernizes ResNet-style architectures and achieves performance comparable to Vision Transformers on standard benchmarks. Both are suitable for patch-level classification and fine-tuning, but their supervised pretraining on ImageNet can reduce robustness under domain shift, as they are sensitive to low-level features like color and texture. In contrast, DINOv2 is trained using self-supervised learning on diverse data, encouraging the emergence of more invariant and transferable features \cite{oquab2023dinov2}. This is particularly beneficial in the presence of strong covariate shift, such as staining and acquisition variability.
+
+\paragraph{Data Augmentation for OOD Robustness.}
+
+A key component of our approach to mitigate covariate shift is a stain-space augmentation strategy applied during training. Histopathology images from different acquisition centers differ substantially in their color appearance due to variations in staining protocols, reagent concentrations, and slide preparation procedures. To simulate this inter-center variability without requiring access to target-domain images, we implemented HED jittering, following the framework proposed by Tellez et al.\ \cite{tellez2019quantifying}.
+
+The augmentation operates by decomposing each RGB image into its Haematoxylin, Eosin, and DAB (HED) stain channels via color deconvolution \cite{ruifrok2001quantification}. Concretely, the RGB image is first converted to optical density (OD) space via $\mathrm{OD} = -\log(\mathbf{I})$, and then projected into HED space using the standard color deconvolution matrix. Random affine perturbations are then applied independently to each stain channel:
+    $\tilde{h}_c = \alpha_c \, h_c + \beta_c, \quad c \in \{\text{H}, \text{E}, \text{D}\},$
+where $\alpha_c \sim \mathcal{U}(1-\theta,\, 1+\theta)$ is a multiplicative scaling factor and $\beta_c \sim \mathcal{U}(-\theta,\, \theta)$ is an additive shift, both sampled independently per channel and per image. The perturbed HED representation is then projected back to OD space and converted to RGB via the inverse deconvolution matrix. We used $\theta = 0.05$, which corresponds to a subtle yet effective perturbation level. 
+
+In addition to stain jittering, the training pipeline includes standard spatial augmentations: random horizontal and vertical flips, and random rotations up to $\pm 90^\circ$. At validation time, only resizing is applied.
+
+% SHORTER VERSION:
+\begin{comment}
+\paragraph{Data Augmentation for OOD Robustness.}
+
+To mitigate the inter-center covariate shift caused by varying staining protocols, we apply HED jittering during training, following Tellez et al.\ \cite{tellez2019quantifying}. Each RGB image is first converted to optical density space via $\mathrm{OD} = -\log(\mathbf{I})$, then projected into Haematoxylin, Eosin, and DAB (HED) stain channels via color deconvolution \cite{ruifrok2001quantification}. Independent random affine perturbations are applied to each channel:
+\begin{equation}
+    \tilde{h}_c = \alpha_c \, h_c + \beta_c, \qquad c \in \{\text{H}, \text{E}, \text{D}\},
+\end{equation}
+where $\alpha_c \sim \mathcal{U}(1-\theta, 1+\theta)$ and $\beta_c \sim \mathcal{U}(-\theta, \theta)$, with $\theta = 0.05$. The perturbed channels are then mapped back to RGB. This stain jittering is complemented by random horizontal and vertical flips and rotations up to $90^\circ$. At validation time, only resizing is applied.
+\end{comment}
+
+\paragraph{Test-Time Augmentation.} 
+
+As a final component, we incorporate test-time augmentation (TTA) \cite{shanmugam2021better} to improve robustness at evaluation time. TTA is not used during training or intermediate validation, but only applied post hoc once training is complete. For each input image, we generate geometric variants (horizontal and vertical flips, and $90^\circ$ rotations), and average the predicted probabilities across these transformations to reduce variance and improve stability \cite{lyzhov2020greedy}. This approach mitigates sensitivity to orientation-specific features, which is particularly relevant in histopathology where tissue structures are largely orientation-invariant. We also experimented with adding stain perturbations (HED jittering) to TTA, but observed inconsistent gains relative to the increased computational cost.
+
+For model selection, we report both standard validation accuracy and TTA-enhanced accuracy, and base the final choice on both metrics. This ensures that improvements are not solely driven by inference-time augmentation while still leveraging TTA as a practical performance booster.
 
 \section{Model Tuning and Comparison}
 \subsection{Experimental Setup}
