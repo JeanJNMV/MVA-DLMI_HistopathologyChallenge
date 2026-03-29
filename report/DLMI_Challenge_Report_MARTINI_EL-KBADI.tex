@@ -67,6 +67,12 @@ This challenge addresses precisely this problem. The task is the binary classifi
 Naively training a classifier on the source centers and evaluating on the target centers reveals a substantial performance gap, motivating the need for domain generalization strategies. To address this, we explore a variety of approaches, including data augmentation techniques, stain normalization methods, fine-tuning strategies and test-time adaptation methods. Together, these components form a pipeline designed to maximize generalization to unseen acquisition centers.
 
 \section{Architecture and Methodological Components}
+
+% FAIRE UN PARAGAPHE SUR LA DATA AVEC LA FIGURE UMAP ???
+\paragraph{The Data.} 
+
+The dataset consists of histopathology image patches extracted from whole-slide images (WSIs) of either tumor (class 1) or non-tumor (class 0) tissue. The training set includes patches from three distinct medical centers, while the validation and test sets contain patches from two additional centers not seen during training. Figure~\ref{fig:repartition} illustrates the distribution of samples across centers and classes, highlighting that the class distribution is balanced within each center but not across centers. We also provided in Figure~\ref{fig:umap} a UMAP visualization of the patch embeddings, which reveals which centers are more similar in terms of visual appearance and which ones are more distinct, further motivating the need for domain generalization techniques.
+
 \paragraph{The Baseline.}
 
 The baseline model is composed of a feature extractor and a linear probe. Frozen embeddings are extracted once from all images using the small version of the DINOv2, a Vision Transformer (VT) pretrained via self-supervised self-distillation on a large image corpus \cite{oquab2023dinov2}. This design is computationally efficient and avoids overfitting, as gradient updates are confined to the lightweight linear classification head trained on top of the fixed representations. The preprocessing is very minimal, consisting of resizing the images using ImageNet statistics \cite{deng2009imagenet}, consistent with DINOv2's pretraining regime. While this baseline achieves reasonable in-distribution performance, it provides no mechanism to handle the covariate shift introduced by unseen acquisition centers, motivating the components described in the following sections.
@@ -123,12 +129,7 @@ For model selection, we report both standard validation accuracy and TTA-enhance
   \end{tabular}}
 \end{table}
 
-\begin{figure}[htbp]
-\floatconts
-  {fig:example}
-  {\caption{Example Image}}
-  {\includegraphics[width=0.5\linewidth]{example-image}}
-\end{figure}
+
 
 \begin{algorithm2e}
 \caption{Random example}
@@ -139,7 +140,7 @@ $y\leftarrow 0$\;
 \For{$i\leftarrow 1$ \KwTo $n$}{
   $y \leftarrow y + w_i*x_i$\;
 }
-\end{algorithm2e}
+\end{algorithm2e} 
 
 \clearpage  
 
@@ -151,7 +152,21 @@ $y\leftarrow 0$\;
 
 \appendix
 
-\section{Appendix}
-TODO
+\section{Details on the Data}
+
+\begin{figure}[htbp]
+\floatconts
+  {fig:repartition}%
+  {\caption{Distribution of samples across centers and classes.}}%
+  {\includegraphics[width=\linewidth]{img/repartition.png}}
+\end{figure}
+
+\begin{figure}[htbp]
+\floatconts
+  {fig:umap}%
+  {\caption{UMAP visualization of patch embeddings colored by \textbf{left:} training/validation split, and \textbf{right:} acquisition center.}}%
+  {\includegraphics[width=\linewidth]{img/umap.png}}
+\end{figure}
+
 
 \end{document}
