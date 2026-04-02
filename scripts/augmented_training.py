@@ -21,7 +21,7 @@ from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
 from dlmi.test import evaluate_no_tta, evaluate_with_tta
 from dlmi.train import train
-from dlmi.transforms import get_ood_transform
+from dlmi.transforms import build_stain_bank, get_ood_transform
 from dlmi.utils import get_device, set_seed
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -73,6 +73,11 @@ NUM_EPOCHS = 100
 PATIENCE = 10
 IMG_SIZE = 98
 
+USE_MIXSTYLE = True
+MIXSTYLE_P = 0.5
+MIXSTYLE_ALPHA = 0.1
+STAIN_BANK_SIZE = 500
+
 # %%
 set_seed(SEED)
 device = get_device()
@@ -82,7 +87,13 @@ print(f"Model: {MODEL_NAME}, Unfrozen blocks: {NUM_UNFREEZE}")
 
 # %%
 # Data
-train_preprocessing = get_ood_transform(size=IMG_SIZE, train=True)
+base_transform = get_ood_transform(size=IMG_SIZE, train=False)
+base_ds = H5Dataset(TRAIN_PATH, transform=base_transform, mode="train")
+stain_bank = build_stain_bank(base_ds, max_images=STAIN_BANK_SIZE)
+
+train_preprocessing = get_ood_transform(
+    size=IMG_SIZE, train=True, stain_bank=stain_bank
+)
 val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
 
 train_ds = H5Dataset(TRAIN_PATH, transform=train_preprocessing, mode="train")
@@ -96,7 +107,12 @@ print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
 # %%
 # Model
 model = get_finetunable_dinov2(
-    MODEL_NAME, num_blocks_to_unfreeze=NUM_UNFREEZE, device=device
+    MODEL_NAME,
+    num_blocks_to_unfreeze=NUM_UNFREEZE,
+    device=device,
+    use_mixstyle=USE_MIXSTYLE,
+    mixstyle_p=MIXSTYLE_P,
+    mixstyle_alpha=MIXSTYLE_ALPHA,
 )
 
 criterion = torch.nn.BCELoss()
