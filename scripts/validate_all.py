@@ -1,16 +1,24 @@
-# %%
-import os
-import json
-import torch
-import warnings
+# Evaluate all trained DINOv2 checkpoints (all model sizes × layer counts) on the
+# validation set, with and without TTA. Saves accuracy results to results/ as JSON.
 
-from dlmi.utils import set_seed, get_device
+# %%
+import json
+import os
+import sys
+import warnings
+from pathlib import Path
+
+import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
 from torch.utils.data import DataLoader
 
 from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
-from dlmi.transforms import get_ood_transform
 from dlmi.test import evaluate_no_tta, evaluate_with_tta
+from dlmi.transforms import get_ood_transform
+from dlmi.utils import get_device, set_seed
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -18,9 +26,10 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # ## Configuration
 
 # %%
-VAL_PATH = "/workdir/martinije/dlmi_challenge/data/val.h5"
-MODELS_DIR = "/workdir/martinije/dlmi_challenge/models"
-RESULTS_DIR = "/workdir/martinije/dlmi_challenge/results"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+VAL_PATH = str(REPO_ROOT / "data" / "val.h5")
+MODELS_DIR = str(REPO_ROOT / "models")
+RESULTS_DIR = str(REPO_ROOT / "results")
 IMG_SIZE = 98
 BATCH_SIZE = 16
 SEED = 0

@@ -1,15 +1,24 @@
-import torch
+# Generate competition submission CSV files for a trained DINOv2 model.
+# Runs inference both without TTA and with TTA on the test set and saves
+# two CSV files to results/.
+
+import sys
 import warnings
+from pathlib import Path
+
 import h5py
 import numpy as np
+import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from torch.utils.data import DataLoader
 
-from dlmi.utils import set_seed, get_device, save_submission
 from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
-from dlmi.transforms import get_ood_transform
 from dlmi.test import tta_predict
+from dlmi.transforms import get_ood_transform
+from dlmi.utils import get_device, save_submission, set_seed
 
 from tqdm import tqdm
 
@@ -23,15 +32,22 @@ set_seed(SEED)
 device = get_device()
 print(f"Device: {device}")
 
-TEST_PATH = "/workdir/martinije/dlmi_challenge/data/test.h5"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TEST_PATH = str(REPO_ROOT / "data" / "test.h5")
 val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
 
 MODEL_NAME = "dinov2_vitl14"
 NB_LAYERS_TO_FINE_TUNE = 5
-MODEL_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/models/augmented_{MODEL_NAME}_{NB_LAYERS_TO_FINE_TUNE}_layers.pth"
+MODELS_DIR = REPO_ROOT / "models"
+MODEL_SAVE_PATH = str(
+    MODELS_DIR / f"augmented_{MODEL_NAME}_{NB_LAYERS_TO_FINE_TUNE}_layers.pth"
+)
 print(f"Loading model from {MODEL_SAVE_PATH}")
-SUBMISSION_PATH = (
-    f"../results/submission_{MODEL_NAME}_{NB_LAYERS_TO_FINE_TUNE}_layers.csv"
+
+RESULTS_DIR = REPO_ROOT / "results"
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+SUBMISSION_PATH = str(
+    RESULTS_DIR / f"submission_{MODEL_NAME}_{NB_LAYERS_TO_FINE_TUNE}_layers.csv"
 )
 
 model = get_finetunable_dinov2(

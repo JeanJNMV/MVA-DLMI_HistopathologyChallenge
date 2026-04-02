@@ -1,5 +1,6 @@
 import torch
 import torchvision.transforms as T
+import random
 
 
 def get_baseline_transform(size=98):
@@ -96,33 +97,146 @@ class HEDJitter:
         return img_aug.clamp(0.0, 1.0)
 
 
-def get_ood_transform(size=98, train=True):
-    """Return an OOD-robust transform pipeline.
+def extract_hed_stats(img_tensor: torch.Tensor) -> torch.Tensor:
+    """Extract mean HED vector from a single image.
 
-    For training, applies resize, HED stain jittering, random flips, and
-    random rotation. For validation and test, applies resize only.
+    Parameters
+    ----------
+    img_tensor : torch.Tensor
+        Image tensor of shape (C, H, W) with values in [0, 1].
+
+    Returns
+    -------
+    torch.Tensor
+        HED mean vector of shape (3, 1).
+    """
+    RGB2HED = HEDJitter.RGB2HED  # reuse the matrix you already defined
+    img = img_tensor.clamp(1e-6, 1.0)
+    od = -torch.log(img)
+    od_flat = od.view(3, -1)
+    hed = RGB2HED @ od_flat  # (3, H*W)
+    return hed.mean(dim=1, keepdim=True)  # (3, 1) — compact stain signature
+
+
+def build_stain_bank(dataset, max_images: int = 500) -> list[torch.Tensor]:
+    """Collect HED stain signatures from a subset of training images.
+
+    Call this ONCE after creating your dataset, before training starts.
+
+    Parameters
+    ----------
+    dataset : torch.utils.data.Dataset
+        Training dataset returning (image_tensor, label) pairs.
+        Images should already be resized and in [0, 1].
+    max_images : int, optional
+        Maximum number of images to sample for the bank.
+
+    Returns
+    -------
+    list[torch.Tensor]
+        List of HED mean vectors, each of shape (3, 1).
+    """
+    bank = []
+    indices = torch.randperm(len(dataset))[:max_images]
+    for i in indices.tolist():
+        img, _ = dataset[i]
+        if img.max() > 1.0:
+            img = img / 255.0
+        bank.append(extract_hed_stats(img))
+    return bank
+
+
+class StainMix:
+    """Mix the stain signature of an image with one drawn from a stain bank.
+
+    Simulates seeing the same tissue under a different center's staining
+    protocol by interpolating HED statistics between the source image and
+    a randomly sampled reference from the bank.
+
+    Parameters
+    ----------
+    stain_bank : list[torch.Tensor]
+        List of HED mean vectors of shape (3, 1), built by build_stain_bank().
+    alpha : float, optional
+        Maximum interpolation weight toward the reference stain.
+        0.0 = no change, 1.0 = full replacement.
+    """
+
+    HED2RGB = HEDJitter.HED2RGB  # reuse matrices already defined
+    RGB2HED = HEDJitter.RGB2HED
+
+    def __init__(self, stain_bank: list, alpha: float = 0.3):
+        self.stain_bank = stain_bank
+        self.alpha = alpha
+
+    def __call__(self, img: torch.Tensor) -> torch.Tensor:
+        """Apply stain mixing to an image.
+
+        Parameters
+        ----------
+        img : torch.Tensor
+            Image tensor of shape (C, H, W) with values in [0, 1].
+
+        Returns
+        -------
+        torch.Tensor
+            Stain-mixed image tensor of shape (C, H, W) clamped to [0, 1].
+        """
+        if img.max() > 1.0:
+            img = img / 255.0
+        img = img.clamp(1e-6, 1.0)
+
+        od = -torch.log(img)
+        od_flat = od.view(3, -1)
+        hed = self.RGB2HED @ od_flat  # (3, H*W)
+
+        # Source stain signature
+        src_mean = hed.mean(dim=1, keepdim=True)  # (3, 1)
+
+        # Random reference stain from bank
+        ref_mean = random.choice(self.stain_bank).to(img.device)  # (3, 1)
+
+        # Interpolation weight — sample fresh each call
+        lam = random.uniform(0, self.alpha)
+
+        # Shift HED values toward the reference stain center
+        hed_mixed = hed - src_mean + (1 - lam) * src_mean + lam * ref_mean
+
+        od_aug = self.HED2RGB @ hed_mixed
+        img_aug = torch.exp(-od_aug).view(3, img.shape[1], img.shape[2])
+        return img_aug.clamp(0.0, 1.0)
+
+
+def get_ood_transform(size=98, train=True, stain_bank=None):
+    """Return an OOD-robust transform pipeline.
 
     Parameters
     ----------
     size : int, optional
         Target height and width in pixels.
     train : bool, optional
-        If "True", include augmentation transforms.
+        If True, include augmentation transforms.
+    stain_bank : list[torch.Tensor] or None, optional
+        Stain bank built by build_stain_bank(). Required for StainMix
+        during training. If None, StainMix is skipped.
 
     Returns
     -------
-    torchvision.transforms.Compose or torchvision.transforms.Resize
+    torchvision.transforms.Compose
         Composed transform pipeline.
     """
     if train:
-        return T.Compose(
-            [
-                T.Resize((size, size)),
-                HEDJitter(theta=0.05),  # stain aug
-                T.RandomHorizontalFlip(),
-                T.RandomVerticalFlip(),
-                T.RandomRotation(90),
-            ]
-        )
+        augs = [
+            T.Resize((size, size)),
+            HEDJitter(theta=0.05),  # ← your existing stain jitter
+        ]
+        if stain_bank is not None:
+            augs.append(StainMix(stain_bank, alpha=0.3))  # ← NEW, after HEDJitter
+        augs += [
+            T.RandomHorizontalFlip(),
+            T.RandomVerticalFlip(),
+            T.RandomRotation(90),
+        ]
+        return T.Compose(augs)
     else:
-        return T.Resize((size, size))  # no aug at inference
+        return T.Resize((size, size))

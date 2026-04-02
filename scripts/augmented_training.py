@@ -1,19 +1,28 @@
+# Train a DINOv2 model with augmented data (HED jitter, flips, rotations) on the
+# histopathology dataset. Accepts --model_name and --num_unfreeze CLI arguments.
+# Saves the best model checkpoint and training-curve plots to models/ and results/.
+
 # %%
 import argparse
+import sys
+import warnings
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import torch
 import torchmetrics
-import warnings
-import matplotlib.pyplot as plt
 from tqdm import tqdm
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from torch.utils.data import DataLoader
 
-from dlmi.utils import set_seed, get_device
 from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
-from dlmi.transforms import get_ood_transform
-from dlmi.train import train
 from dlmi.test import evaluate_no_tta, evaluate_with_tta
+from dlmi.train import train
+from dlmi.transforms import get_ood_transform
+from dlmi.utils import get_device, set_seed
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -41,12 +50,20 @@ NUM_UNFREEZE = args.num_unfreeze
 
 # %%
 # Paths
-TRAIN_PATH = "/workdir/martinije/dlmi_challenge/data/train.h5"
-VAL_PATH = "/workdir/martinije/dlmi_challenge/data/val.h5"
-TEST_PATH = "/workdir/martinije/dlmi_challenge/data/test.h5"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TRAIN_PATH = str(REPO_ROOT / "data" / "train.h5")
+VAL_PATH = str(REPO_ROOT / "data" / "val.h5")
+TEST_PATH = str(REPO_ROOT / "data" / "test.h5")
 
-MODEL_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/models/augmented_{MODEL_NAME}_{NUM_UNFREEZE}_layers.pth"
-CURVES_SAVE_PATH = f"/workdir/martinije/dlmi_challenge/figures/training_curves_{MODEL_NAME}_{NUM_UNFREEZE}_layers.png"
+MODELS_DIR = REPO_ROOT / "models"
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_SAVE_PATH = str(MODELS_DIR / f"augmented_{MODEL_NAME}_{NUM_UNFREEZE}_layers.pth")
+
+CURVES_DIR = REPO_ROOT / "results" / "training_curves"
+CURVES_DIR.mkdir(parents=True, exist_ok=True)
+CURVES_SAVE_PATH = str(
+    CURVES_DIR / f"training_curves_{MODEL_NAME}_{NUM_UNFREEZE}_layers.png"
+)
 
 # Hyperparameters
 SEED = 0

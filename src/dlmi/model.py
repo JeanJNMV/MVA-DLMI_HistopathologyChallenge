@@ -48,47 +48,115 @@ def get_linear_probe(input_dim, num_classes=1, device=None):
 
 
 def get_finetunable_dinov2(
-    model_name="dinov2_vits14", num_blocks_to_unfreeze=2, device=None
+    model_name="dinov2_vits14",
+    num_blocks_to_unfreeze=2,
+    device=None,
+    use_mixstyle=True,
+    mixstyle_p=0.5,
+    mixstyle_alpha=0.1,
 ):
-    """Build a DINOv2 backbone with the last N transformer blocks unfrozen.
 
-    Returns the full model (backbone + linear head) ready for end-to-end
-    training.
+    """Create a finetunable DINOv2 model with optional MixStyle and binary head.
 
     Parameters
     ----------
     model_name : str, optional
-        Name of the DINOv2 model variant to load.
+        Name of the DINOv2 model variant to load (default "dinov2_vits14").
     num_blocks_to_unfreeze : int, optional
-        Number of trailing transformer blocks to unfreeze.
+        Number of final transformer blocks to unfreeze for fine-tuning.
     device : torch.device or None, optional
-        Device to place the model on. Uses CUDA if available when "None".
+        Device to place the model on. Uses CUDA if available when ``None``.
+    use_mixstyle : bool, optional
+        Whether to insert MixStyle modules as forward hooks into the backbone.
+    mixstyle_p : float, optional
+        Probability of applying MixStyle during training (default 0.5).
+    mixstyle_alpha : float, optional
+        Beta distribution concentration parameter controlling mixing strength.
 
     Returns
     -------
-    DinoWithHead
-        Model composed of the DINOv2 backbone and a binary classification head.
+    torch.nn.Module
+        A model wrapping the DINOv2 backbone with a sigmoid binary head.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     backbone = torch.hub.load("facebookresearch/dinov2", model_name)
 
-    # Freeze everything first
     for param in backbone.parameters():
         param.requires_grad = False
-
-    # Unfreeze the last N blocks
-    # DINOv2-ViTS14 has 12 blocks: backbone.blocks[0] ... backbone.blocks[11]
     for block in backbone.blocks[-num_blocks_to_unfreeze:]:
         for param in block.parameters():
             param.requires_grad = True
-
-    # Also unfreeze the final norm layer
     for param in backbone.norm.parameters():
         param.requires_grad = True
 
-    # Full model: backbone + classification head
+    # MixStyle module definition
+    class MixStyle(nn.Module):
+        """Mix instance-level feature statistics across samples in a batch.
+
+        Targets domain shift by interpolating channel-wise mean and std
+        between randomly paired samples, simulating unseen domain styles.
+
+        Applied in token space: (B, N_tokens, D) from ViT blocks.
+
+        Parameters
+        ----------
+        p : float
+            Probability of applying MixStyle on a given forward pass.
+        alpha : float
+            Beta distribution concentration — higher = more mixing.
+
+        References
+        ----------
+        Zhou et al., "Domain Generalization with MixStyle", ICLR 2021.
+        """
+
+        def __init__(self, p=0.5, alpha=0.1):
+            super().__init__()
+            self.p = p
+            self.alpha = alpha
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            """Apply MixStyle to a token sequence.
+
+            Parameters
+            ----------
+            x : torch.Tensor
+                Token tensor of shape (B, N_tokens, D).
+
+            Returns
+            -------
+            torch.Tensor
+                Style-mixed tensor of shape (B, N_tokens, D).
+            """
+            if not self.training or torch.rand(1).item() > self.p:
+                return x
+
+            B, N, D = x.shape
+
+            # Compute per-sample statistics across the token dimension
+            mu = x.mean(dim=1, keepdim=True)  # (B, 1, D)
+            sigma = x.std(dim=1, keepdim=True) + 1e-6  # (B, 1, D)
+            x_norm = (x - mu) / sigma
+
+            # Sample Beta mixing weights, bias toward stronger of the two
+            lam = (
+                torch.distributions.Beta(self.alpha, self.alpha)
+                .sample((B,))
+                .to(x.device)
+            )  # (B,)
+            lam = torch.max(lam, 1 - lam).view(B, 1, 1)  # (B, 1, 1)
+
+            # Random pairing within the batch
+            perm = torch.randperm(B, device=x.device)
+            mu2, sigma2 = mu[perm], sigma[perm]
+
+            # Interpolate statistics and re-apply
+            mu_mix = lam * mu + (1 - lam) * mu2
+            sigma_mix = lam * sigma + (1 - lam) * sigma2
+            return x_norm * sigma_mix + mu_mix
+
     class DinoWithHead(nn.Module):
         """DINOv2 backbone with a binary classification head.
 
@@ -98,28 +166,39 @@ def get_finetunable_dinov2(
             DINOv2 feature extractor.
         feat_dim : int
             Dimension of the backbone output features.
+        mixstyle_blocks : list[int]
+            Indices of transformer blocks after which MixStyle is applied.
         """
 
-        def __init__(self, backbone, feat_dim):
+        def __init__(self, backbone, feat_dim, mixstyle_blocks):
             super().__init__()
             self.backbone = backbone
             self.head = nn.Sequential(nn.Linear(feat_dim, 1), nn.Sigmoid())
 
+            # Register one MixStyle module per hook location
+            self.mixstyles = nn.ModuleList(
+                [MixStyle(p=mixstyle_p, alpha=mixstyle_alpha) for _ in mixstyle_blocks]
+            )
+
+            # Attach hooks — capture the MixStyle ref in the closure
+            for ms, block_idx in zip(self.mixstyles, mixstyle_blocks):
+                backbone.blocks[block_idx].register_forward_hook(self._make_hook(ms))
+
+        @staticmethod
+        def _make_hook(ms_module):
+            """Closure so each hook captures its own MixStyle instance."""
+
+            def hook(module, input, output):
+                return ms_module(output)
+
+            return hook
+
         def forward(self, x):
-            """Forward pass through backbone and classification head.
-
-            Parameters
-            ----------
-            x : torch.Tensor
-                Input image batch of shape "(B, C, H, W)".
-
-            Returns
-            -------
-            torch.Tensor
-                Predicted probabilities of shape "(B, 1)".
-            """
-            features = self.backbone(x)  # (B, 384) for ViTS14
+            features = self.backbone(x)
             return self.head(features)
 
-    model = DinoWithHead(backbone, backbone.num_features).to(device)
+    # Apply MixStyle after blocks 3 and 6 (early-to-mid network)  ← NEW
+    mixstyle_blocks = [3, 6] if use_mixstyle else []
+
+    model = DinoWithHead(backbone, backbone.num_features, mixstyle_blocks).to(device)
     return model
