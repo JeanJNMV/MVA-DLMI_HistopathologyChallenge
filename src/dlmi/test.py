@@ -1,9 +1,10 @@
 import torch
 import torchmetrics
-import torchvision.transforms.functional as F
 import h5py
 from tqdm import tqdm
 import numpy as np
+
+from dlmi.transforms import get_d4_transforms
 
 
 def tta_predict(model, img_tensor, device, n_augments=8):
@@ -27,16 +28,7 @@ def tta_predict(model, img_tensor, device, n_augments=8):
     float
         Mean predicted probability across augmentations.
     """
-    augmented = [
-        img_tensor,
-        F.hflip(img_tensor),
-        F.vflip(img_tensor),
-        F.rotate(img_tensor, 90),
-        F.rotate(img_tensor, 180),
-        F.rotate(img_tensor, 270),
-        F.hflip(F.rotate(img_tensor, 90)),
-        F.vflip(F.rotate(img_tensor, 90)),
-    ][:n_augments]
+    augmented = get_d4_transforms(img_tensor)[:n_augments]
     batch = torch.stack(augmented).to(device)
     with torch.no_grad():
         preds = model(batch)

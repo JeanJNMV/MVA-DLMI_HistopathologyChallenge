@@ -2,7 +2,7 @@ import h5py
 import torch
 import numpy as np
 from torch.utils.data import Dataset
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 
 class H5Dataset(Dataset):
@@ -17,16 +17,53 @@ class H5Dataset(Dataset):
     transform : callable or None, optional
         Transform to apply to each image tensor.
     mode : str, optional
-        If "'train'", labels are loaded; otherwise labels are "None".
+        If "'train'", labels are loaded; otherwise a dummy label is returned so
+        the dataset remains compatible with batched DataLoader inference.
+    centers : list of int or None, optional
+        If provided, only include samples from these centers.
+        Requires reading metadata during initialization.
     """
 
-    def __init__(self, dataset_path, transform=None, mode="train"):
+    def __init__(self, dataset_path, transform=None, mode="train", centers=None):
         self.dataset_path = dataset_path
         self.transform = transform
         self.mode = mode
+        self._hdf = None
 
         with h5py.File(self.dataset_path, "r") as hdf:
-            self.image_ids = list(hdf.keys())
+            if centers is not None:
+                self.image_ids = [
+                    img_id
+                    for img_id in hdf.keys()
+                    if int(np.array(hdf[img_id]["metadata"])[0]) in centers
+                ]
+            else:
+                self.image_ids = list(hdf.keys())
+
+    def __getstate__(self):
+        """Drop open HDF5 handles before pickling the dataset."""
+        state = self.__dict__.copy()
+        state["_hdf"] = None
+        return state
+
+    def _get_hdf(self):
+        """Open the HDF5 file lazily once per process/worker."""
+        if self._hdf is None:
+            self._hdf = h5py.File(self.dataset_path, "r")
+        return self._hdf
+
+    def close(self):
+        """Close the cached HDF5 handle when it exists."""
+        if self._hdf is not None:
+            hdf = self._hdf
+            self._hdf = None
+            try:
+                hdf.close()
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+    def __del__(self):
+        self.close()
 
     def __len__(self):
         """Return the number of samples in the dataset.
@@ -50,15 +87,13 @@ class H5Dataset(Dataset):
         -------
         img : torch.Tensor
             Image tensor of shape "(C, H, W)".
-        label : numpy.ndarray or None
-            Label array when "mode='train'", otherwise "None".
+        label : int
+            Ground-truth label when "mode='train'", otherwise "-1".
         """
         img_id = self.image_ids[idx]
-        with h5py.File(self.dataset_path, "r") as hdf:
-            img = torch.tensor(hdf.get(img_id).get("img")).float()
-            label = (
-                np.array(hdf.get(img_id).get("label")) if self.mode == "train" else None
-            )
+        grp = self._get_hdf()[img_id]
+        img = torch.from_numpy(np.asarray(grp["img"])).float()
+        label = int(np.asarray(grp["label"])) if self.mode == "train" else -1
         if self.transform:
             img = self.transform(img)
         return img, label

@@ -1,9 +1,39 @@
 import torch
 import numpy as np
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 
-def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
+def _forward_with_loss(model, x, y, criterion, device):
+    """Compute predictions and loss, using logits when the criterion expects them."""
+    x = x.to(device)
+    y = y.float().to(device)
+
+    if isinstance(criterion, torch.nn.BCEWithLogitsLoss) and hasattr(
+        model, "forward_logits"
+    ):
+        logits = model.forward_logits(x).squeeze(1)
+        pred = torch.sigmoid(logits)
+        loss = criterion(logits, y)
+    else:
+        pred = model(x).squeeze(1)
+        loss = criterion(pred, y)
+
+    return pred, loss
+
+
+def _compute_epoch_metric(metric, preds, targets):
+    """Compute a scalar metric over a full epoch when supported by the metric object."""
+    if all(hasattr(metric, attr) for attr in ("reset", "update", "compute")):
+        metric.reset()
+        metric.update(preds, targets)
+        value = metric.compute().item()
+        metric.reset()
+        return value
+
+    return (preds.round().int() == targets).float().mean().item()
+
+
+def train_one_epoch(model, dataloader, optimizer, criterion, metric, device, scaler=None):
     """Run one training epoch.
 
     Parameters
@@ -20,6 +50,8 @@ def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
         Metric function returning a scalar score.
     device : torch.device
         Device to run training on.
+    scaler : torch.amp.GradScaler or None, optional
+        AMP gradient scaler. When provided, the forward pass runs in float16.
 
     Returns
     -------
@@ -29,21 +61,31 @@ def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
         Mean training metric over the epoch.
     """
     model.train()
-    losses, metrics = [], []
+    losses = []
+    preds_epoch, targets_epoch = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Training"):
         optimizer.zero_grad()
-        pred = model(x.to(device)).squeeze(1)
-        loss = criterion(pred, y.float().to(device))
-        loss.backward()
-        optimizer.step()
+        if scaler is not None:
+            with torch.amp.autocast(device_type="cuda"):
+                pred, loss = _forward_with_loss(model, x, y, criterion, device)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            pred, loss = _forward_with_loss(model, x, y, criterion, device)
+            loss.backward()
+            optimizer.step()
         losses.extend([loss.item()] * len(y))
-        m = metric(pred.cpu(), y.int().cpu())
-        metrics.extend([m.item()] * len(y))
-    return np.mean(losses), np.mean(metrics)
+        preds_epoch.append(pred.detach().cpu())
+        targets_epoch.append(y.int().cpu())
+
+    preds_epoch = torch.cat(preds_epoch)
+    targets_epoch = torch.cat(targets_epoch)
+    return np.mean(losses), _compute_epoch_metric(metric, preds_epoch, targets_epoch)
 
 
 @torch.no_grad()
-def validate(model, dataloader, criterion, metric, device):
+def validate(model, dataloader, criterion, metric, device, use_amp=False):
     """Run validation.
 
     Parameters
@@ -58,6 +100,8 @@ def validate(model, dataloader, criterion, metric, device):
         Metric function returning a scalar score.
     device : torch.device
         Device to run evaluation on.
+    use_amp : bool, optional
+        Whether to run the forward pass in float16 via AMP.
 
     Returns
     -------
@@ -67,14 +111,21 @@ def validate(model, dataloader, criterion, metric, device):
         Mean validation metric.
     """
     model.eval()
-    losses, metrics = [], []
+    losses = []
+    preds_epoch, targets_epoch = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Validating"):
-        pred = model(x.to(device)).squeeze(1)
-        loss = criterion(pred, y.float().to(device))
+        if use_amp:
+            with torch.amp.autocast(device_type="cuda"):
+                pred, loss = _forward_with_loss(model, x, y, criterion, device)
+        else:
+            pred, loss = _forward_with_loss(model, x, y, criterion, device)
         losses.extend([loss.item()] * len(y))
-        m = metric(pred.cpu(), y.int().cpu())
-        metrics.extend([m.item()] * len(y))
-    return np.mean(losses), np.mean(metrics)
+        preds_epoch.append(pred.detach().cpu())
+        targets_epoch.append(y.int().cpu())
+
+    preds_epoch = torch.cat(preds_epoch)
+    targets_epoch = torch.cat(targets_epoch)
+    return np.mean(losses), _compute_epoch_metric(metric, preds_epoch, targets_epoch)
 
 
 def train(
@@ -88,11 +139,14 @@ def train(
     num_epochs=100,
     patience=10,
     save_path=None,
+    use_amp=True,
 ):
-    """Full training loop with early stopping.
+    """Full training loop with early stopping, cosine LR scheduling, and AMP.
 
     Training stops when the validation loss does not improve for
-    "patience" consecutive epochs.
+    "patience" consecutive epochs. The learning rate follows a cosine
+    annealing schedule over "num_epochs". Mixed-precision (float16) is
+    enabled automatically when a CUDA device is used and "use_amp=True".
 
     Parameters
     ----------
@@ -116,6 +170,8 @@ def train(
         Number of epochs without improvement before stopping.
     save_path : str or None, optional
         Path to save the best model weights. No saving when "None".
+    use_amp : bool, optional
+        Enable automatic mixed precision on CUDA (default True).
 
     Returns
     -------
@@ -123,6 +179,20 @@ def train(
         Training history with keys "'train_loss'", "'val_loss'",
         "'train_metric'", and "'val_metric'".
     """
+    # AMP: active only on CUDA
+    scaler = (
+        torch.amp.GradScaler(device="cuda")
+        if (use_amp and device.type == "cuda")
+        else None
+    )
+    if scaler is not None:
+        print("AMP enabled (float16 mixed precision)")
+
+    # Cosine annealing: LR decays from its initial value to ~0 over num_epochs
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epochs, eta_min=1e-7
+    )
+
     history = {
         "train_loss": [],
         "val_loss": [],
@@ -134,11 +204,15 @@ def train(
 
     for epoch in range(num_epochs):
         train_loss, train_metric = train_one_epoch(
-            model, train_dataloader, optimizer, criterion, metric, device
+            model, train_dataloader, optimizer, criterion, metric, device,
+            scaler=scaler,
         )
         val_loss, val_metric = validate(
-            model, val_dataloader, criterion, metric, device
+            model, val_dataloader, criterion, metric, device,
+            use_amp=(scaler is not None),
         )
+
+        scheduler.step()
 
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)

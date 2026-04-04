@@ -1,8 +1,15 @@
 # %%
 import os
 import json
+import argparse
+from pathlib import Path
+import sys
+
 import torch
 import warnings
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from dlmi.utils import set_seed, get_device
 from torch.utils.data import DataLoader
@@ -18,19 +25,29 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # ## Configuration
 
 # %%
-VAL_PATH = "/workdir/martinije/dlmi_challenge/data/val.h5"
-MODELS_DIR = "/workdir/martinije/dlmi_challenge/models"
-RESULTS_DIR = "/workdir/martinije/dlmi_challenge/results"
-IMG_SIZE = 98
-BATCH_SIZE = 16
-SEED = 0
+parser = argparse.ArgumentParser(description="Evaluate all saved model checkpoints")
+parser.add_argument("--val_path", type=str, default="data/val.h5")
+parser.add_argument("--models_dir", type=str, default="models")
+parser.add_argument("--results_dir", type=str, default="results")
+parser.add_argument("--img_size", type=int, default=98)
+parser.add_argument("--batch_size", type=int, default=16)
+parser.add_argument("--seed", type=int, default=0)
+args = parser.parse_args()
 
 MODEL_NAMES = ["dinov2_vits14", "dinov2_vitb14", "dinov2_vitl14"]
 NB_LAYERS_LIST = [2, 3, 5, 7, 10]
 
-set_seed(SEED)
+VAL_PATH = args.val_path
+MODELS_DIR = args.models_dir
+RESULTS_DIR = args.results_dir
+IMG_SIZE = args.img_size
+BATCH_SIZE = args.batch_size
+
+set_seed(args.seed)
 device = get_device()
 print(f"Device: {device}")
+print(f"Val path: {VAL_PATH}")
+print(f"Models dir: {MODELS_DIR}")
 
 # %% [markdown]
 # ## Prepare validation data
@@ -64,7 +81,9 @@ for model_name in MODEL_NAMES:
         model = get_finetunable_dinov2(
             model_name, num_blocks_to_unfreeze=nb_layers, device=device
         )
-        model.load_state_dict(torch.load(model_path, weights_only=True))
+        model.load_state_dict(
+            torch.load(model_path, weights_only=True, map_location=device)
+        )
         model.eval()
 
         # Without TTA

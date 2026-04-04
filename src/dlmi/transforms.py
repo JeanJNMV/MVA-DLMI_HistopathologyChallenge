@@ -1,5 +1,6 @@
 import torch
 import torchvision.transforms as T
+import random
 
 
 def get_baseline_transform(size=98):
@@ -96,11 +97,25 @@ class HEDJitter:
         return img_aug.clamp(0.0, 1.0)
 
 
+def get_d4_transforms(img: torch.Tensor):
+    """Return the 8 exact dihedral symmetries of an image tensor."""
+    rotations = [torch.rot90(img, k, dims=(-2, -1)) for k in range(4)]
+    return rotations + [torch.flip(rot, dims=(-1,)) for rot in rotations]
+
+
+class RandomD4:
+    """Sample one exact rotation/flip symmetry from the D4 group."""
+
+    def __call__(self, img: torch.Tensor) -> torch.Tensor:
+        return get_d4_transforms(img)[random.randrange(8)]
+
+
 def get_ood_transform(size=98, train=True):
     """Return an OOD-robust transform pipeline.
 
-    For training, applies resize, HED stain jittering, random flips, and
-    random rotation. For validation and test, applies resize only.
+    For training, applies resize, HED stain jittering, and one exact D4
+    symmetry (rotations by 90 degrees and flips). For validation and test,
+    applies resize only.
 
     Parameters
     ----------
@@ -119,9 +134,7 @@ def get_ood_transform(size=98, train=True):
             [
                 T.Resize((size, size)),
                 HEDJitter(theta=0.05),  # stain aug
-                T.RandomHorizontalFlip(),
-                T.RandomVerticalFlip(),
-                T.RandomRotation(90),
+                RandomD4(),
             ]
         )
     else:

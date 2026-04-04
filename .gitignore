@@ -9,11 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
+# Local OS / editor files
+.DS_Store
+
 # Data files
 data/
 *.zip
 output/
 models/
+logs/
+figures/
+results/loco_*.json
 
 *.md
 !README.md
