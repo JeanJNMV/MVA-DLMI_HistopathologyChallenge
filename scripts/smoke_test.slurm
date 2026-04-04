@@ -18,7 +18,10 @@
 set -euo pipefail
 
 module purge
-module load cuda/12.1  # adjust as needed
+PYTHON_MODULE="${PYTHON_MODULE:-python/3.14.0/gcc-15.1.0}"
+CUDA_MODULE="${CUDA_MODULE:-cuda/13.0.2/none-none}"
+module load "$PYTHON_MODULE"
+module load "$CUDA_MODULE"
 
 WORK_ROOT="${WORKDIR:-/workdir/$USER}"
 PROJECT_DIR="${PROJECT_DIR:-$WORK_ROOT/MVA-DLMI_Histopathology_Challenge}"
@@ -42,6 +45,7 @@ fi
 echo "Project : $PROJECT_DIR"
 echo "Python  : $PYTHON_BIN"
 echo "Model   : $MODEL_NAME"
+echo "Modules : $PYTHON_MODULE | $CUDA_MODULE"
 
 "$PYTHON_BIN" scripts/smoke_test.py \
     --model_name "$MODEL_NAME" \

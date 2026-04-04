@@ -20,7 +20,10 @@ set -euo pipefail
 
 # --- Ruche modules (adapt to your environment) ---
 module purge
-module load cuda/12.1  # adjust version as needed
+PYTHON_MODULE="${PYTHON_MODULE:-python/3.14.0/gcc-15.1.0}"
+CUDA_MODULE="${CUDA_MODULE:-cuda/13.0.2/none-none}"
+module load "$PYTHON_MODULE"
+module load "$CUDA_MODULE"
 
 # --- Paths ---
 WORK_ROOT="${WORKDIR:-/workdir/$USER}"
@@ -66,6 +69,7 @@ echo "========================================"
 echo "LOCO fold: held-out center $HELD_OUT_CENTER"
 echo "Model: $MODEL_NAME  |  Unfreeze: $NUM_UNFREEZE"
 echo "Batch size: $BATCH_SIZE  |  Workers: $NUM_WORKERS"
+echo "Modules: $PYTHON_MODULE | $CUDA_MODULE"
 echo "HF_HOME: $HF_HOME"
 echo "TORCH_HOME: $TORCH_HOME"
 echo "========================================"
