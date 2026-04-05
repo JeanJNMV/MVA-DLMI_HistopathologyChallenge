@@ -41,6 +41,7 @@ FIGURES_DIR="${FIGURES_DIR:-$PROJECT_DIR/figures}"
 BATCH_SIZE="${BATCH_SIZE:-64}"
 LR_HEAD="${LR_HEAD:-1e-3}"
 LR_BACKBONE="${LR_BACKBONE:-1e-5}"
+IMG_SIZE="${IMG_SIZE:-}"
 SEED="${SEED:-0}"
 NUM_WORKERS="${NUM_WORKERS:-$SLURM_CPUS_PER_TASK}"
 
@@ -56,10 +57,16 @@ echo "========================================"
 echo "Final training on all 4 centers"
 echo "Model: $MODEL_NAME  |  Unfreeze: $NUM_UNFREEZE  |  Epochs: $NUM_EPOCHS"
 echo "Batch: $BATCH_SIZE  |  Workers: $NUM_WORKERS"
+echo "Image size: ${IMG_SIZE:-auto}"
 echo "Modules: $PYTHON_MODULE | $CUDA_MODULE"
 echo "HF_HOME: $HF_HOME"
 echo "TORCH_HOME: $TORCH_HOME"
 echo "========================================"
+
+img_size_args=()
+if [ -n "$IMG_SIZE" ]; then
+    img_size_args=(--img_size "$IMG_SIZE")
+fi
 
 "$PYTHON_BIN" scripts/final_training.py \
     --model_name "$MODEL_NAME" \
@@ -73,4 +80,5 @@ echo "========================================"
     --lr_head "$LR_HEAD" \
     --lr_backbone "$LR_BACKBONE" \
     --seed "$SEED" \
-    --num_workers "$NUM_WORKERS"
+    --num_workers "$NUM_WORKERS" \
+    "${img_size_args[@]}"

@@ -31,7 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from dlmi.utils import set_seed, get_device
 from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
-from dlmi.transforms import get_ood_transform
+from dlmi.transforms import get_default_img_size, get_ood_transform
 from dlmi.train import train
 from dlmi.test import evaluate_no_tta
 
@@ -100,8 +100,8 @@ def run_one_fold(
     print(f"Fold {fold_idx}: train on centers {train_centers}, validate on center {held_out_center}")
     print(f"{'='*60}")
 
-    train_transform = get_ood_transform(size=img_size, train=True)
-    val_transform = get_ood_transform(size=img_size, train=False)
+    train_transform = get_ood_transform(size=img_size, train=True, model_name=model_name)
+    val_transform = get_ood_transform(size=img_size, train=False, model_name=model_name)
 
     train_ds = H5Dataset(train_path, transform=train_transform, mode="train", centers=train_centers)
     val_ds = H5Dataset(train_path, transform=val_transform, mode="train", centers=[held_out_center])
@@ -173,7 +173,7 @@ def main():
     parser.add_argument("--lr_backbone", type=float, default=1e-5)
     parser.add_argument("--num_epochs", type=int, default=100)
     parser.add_argument("--patience", type=int, default=10)
-    parser.add_argument("--img_size", type=int, default=98)
+    parser.add_argument("--img_size", type=int, default=None)
     parser.add_argument("--save_dir", type=str, default="models/loco")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--seed", type=int, default=0)
@@ -201,6 +201,13 @@ def main():
     print(f"LOCO CV over centers: {centers_to_run}")
     print(f"DataLoader workers: {args.num_workers}")
 
+    img_size = (
+        args.img_size
+        if args.img_size is not None
+        else get_default_img_size(args.model_name)
+    )
+    print(f"Image size: {img_size}")
+
     fold_results = {}
     for fold_idx, held_out in enumerate(centers_to_run):
         train_centers = [c for c in ALL_TRAIN_CENTERS if c != held_out]
@@ -217,7 +224,7 @@ def main():
             lr_backbone=args.lr_backbone,
             num_epochs=args.num_epochs,
             patience=args.patience,
-            img_size=args.img_size,
+            img_size=img_size,
             save_dir=args.save_dir,
             num_workers=args.num_workers,
         )

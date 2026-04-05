@@ -2,6 +2,15 @@ import torch
 import torchvision.transforms as T
 import random
 
+_HIBOU_MODELS = {"hibou-b", "hibou-l"}
+_HIBOU_MEAN = [0.7068, 0.5755, 0.7220]
+_HIBOU_STD = [0.1950, 0.2316, 0.1816]
+
+
+def get_default_img_size(model_name="dinov2_vits14"):
+    """Return the recommended square input size for a backbone."""
+    return 224 if model_name in _HIBOU_MODELS else 98
+
 
 def get_baseline_transform(size=98):
     """Return a baseline preprocessing transform that resizes to a fixed square.
@@ -17,6 +26,16 @@ def get_baseline_transform(size=98):
         Resize transform.
     """
     return T.Resize((size, size))
+
+
+class ToUnitInterval:
+    """Scale tensor images to [0, 1] when they are stored as [0, 255]."""
+
+    def __call__(self, img: torch.Tensor) -> torch.Tensor:
+        img = img.float()
+        if img.max() > 1.0:
+            img = img / 255.0
+        return img.clamp(0.0, 1.0)
 
 
 class HEDJitter:
@@ -110,25 +129,38 @@ class RandomD4:
         return get_d4_transforms(img)[random.randrange(8)]
 
 
-def get_ood_transform(size=98, train=True):
+def get_ood_transform(size=None, train=True, model_name="dinov2_vits14"):
     """Return an OOD-robust transform pipeline.
 
     For training, applies resize, HED stain jittering, and one exact D4
-    symmetry (rotations by 90 degrees and flips). For validation and test,
-    applies resize only.
+    symmetry (rotations by 90 degrees and flips). Hibou models also use the
+    official HistAI normalization. For validation and test, applies only the
+    deterministic preprocessing steps.
 
     Parameters
     ----------
-    size : int, optional
-        Target height and width in pixels.
+    size : int or None, optional
+        Target height and width in pixels. When "None", the backbone-specific
+        default is used.
     train : bool, optional
         If "True", include augmentation transforms.
+    model_name : str, optional
+        Backbone name used to select model-specific normalization defaults.
 
     Returns
     -------
     torchvision.transforms.Compose or torchvision.transforms.Resize
         Composed transform pipeline.
     """
+    size = get_default_img_size(model_name) if size is None else size
+
+    if model_name in _HIBOU_MODELS:
+        transforms = [T.Resize((size, size)), ToUnitInterval()]
+        if train:
+            transforms.extend([HEDJitter(theta=0.05), RandomD4()])
+        transforms.append(T.Normalize(mean=_HIBOU_MEAN, std=_HIBOU_STD))
+        return T.Compose(transforms)
+
     if train:
         return T.Compose(
             [

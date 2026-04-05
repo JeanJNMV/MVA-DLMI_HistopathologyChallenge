@@ -48,7 +48,7 @@ LR_HEAD="${LR_HEAD:-1e-3}"
 LR_BACKBONE="${LR_BACKBONE:-1e-5}"
 NUM_EPOCHS="${NUM_EPOCHS:-100}"
 PATIENCE="${PATIENCE:-10}"
-IMG_SIZE="${IMG_SIZE:-98}"
+IMG_SIZE="${IMG_SIZE:-}"
 SEED="${SEED:-0}"
 NUM_WORKERS="${NUM_WORKERS:-$SLURM_CPUS_PER_TASK}"
 
@@ -69,10 +69,16 @@ echo "========================================"
 echo "LOCO fold: held-out center $HELD_OUT_CENTER"
 echo "Model: $MODEL_NAME  |  Unfreeze: $NUM_UNFREEZE"
 echo "Batch size: $BATCH_SIZE  |  Workers: $NUM_WORKERS"
+echo "Image size: ${IMG_SIZE:-auto}"
 echo "Modules: $PYTHON_MODULE | $CUDA_MODULE"
 echo "HF_HOME: $HF_HOME"
 echo "TORCH_HOME: $TORCH_HOME"
 echo "========================================"
+
+img_size_args=()
+if [ -n "$IMG_SIZE" ]; then
+    img_size_args=(--img_size "$IMG_SIZE")
+fi
 
 "$PYTHON_BIN" scripts/loco_cv.py \
     --model_name "$MODEL_NAME" \
@@ -83,9 +89,9 @@ echo "========================================"
     --lr_backbone "$LR_BACKBONE" \
     --num_epochs "$NUM_EPOCHS" \
     --patience "$PATIENCE" \
-    --img_size "$IMG_SIZE" \
     --save_dir "$SAVE_DIR" \
     --results_dir "$RESULTS_DIR" \
     --seed "$SEED" \
     --num_workers "$NUM_WORKERS" \
-    --held_out_center "$HELD_OUT_CENTER"
+    --held_out_center "$HELD_OUT_CENTER" \
+    "${img_size_args[@]}"

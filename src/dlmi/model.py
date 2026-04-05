@@ -2,11 +2,31 @@ import torch
 import torch.nn as nn
 
 # Hibou pathology foundation models (ViT-*/14, pretrained on histopathology).
-# Loaded via timm from HuggingFace Hub — no resize needed for 98×98 inputs.
+# HistAI recommends loading them via transformers + trust_remote_code.
 _HIBOU_MODELS = {
     "hibou-b": "histai/hibou-b",
-    "hibou-l": "histai/hibou-l",
+    "hibou-l": "histai/hibou-L",
 }
+
+
+def is_hibou_model(model_name):
+    """Return True when the requested backbone is a Hibou foundation model."""
+    return model_name in _HIBOU_MODELS
+
+
+def _resolve_attr(root, *paths):
+    """Return the first nested attribute path found on ``root``."""
+    for path in paths:
+        obj = root
+        found = True
+        for name in path.split("."):
+            obj = getattr(obj, name, None)
+            if obj is None:
+                found = False
+                break
+        if found:
+            return obj
+    return None
 
 
 def get_feature_extractor(model_name="dinov2_vits14", device=None):
@@ -26,7 +46,16 @@ def get_feature_extractor(model_name="dinov2_vits14", device=None):
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = torch.hub.load("facebookresearch/dinov2", model_name).to(device)
+
+    if is_hibou_model(model_name):
+        model = get_finetunable_dinov2(
+            model_name=model_name,
+            num_blocks_to_unfreeze=0,
+            device=device,
+        ).backbone
+    else:
+        model = torch.hub.load("facebookresearch/dinov2", model_name).to(device)
+
     model.eval()
     return model
 
@@ -79,47 +108,74 @@ def get_finetunable_dinov2(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if model_name in _HIBOU_MODELS:
+    if is_hibou_model(model_name):
         try:
-            import timm
+            from transformers import AutoModel
         except ImportError:
             raise ImportError(
-                "timm is required for Hibou models. Install with: pip install timm"
+                "transformers is required for Hibou models. Install with: pip install transformers"
             )
 
-        _timm_model = timm.create_model(
-            f"hf-hub:{_HIBOU_MODELS[model_name]}", pretrained=True
+        _hf_model = AutoModel.from_pretrained(
+            _HIBOU_MODELS[model_name], trust_remote_code=True
         )
 
         class _HibouBackbone(nn.Module):
-            """Thin wrapper exposing the same interface as a DINOv2 torch.hub model.
-
-            ``backbone(x)`` returns the CLS token embedding, exactly like
-            DINOv2 loaded via ``torch.hub``.
-            """
+            """Adapter exposing a DINO-like interface around the HF Hibou model."""
 
             def __init__(self, m):
                 super().__init__()
                 self._m = m
+                self._blocks = _resolve_attr(
+                    m,
+                    "encoder.layer",
+                    "encoder.layers",
+                    "dinov2.encoder.layer",
+                    "dinov2.encoder.layers",
+                    "blocks",
+                )
+                self._norm = _resolve_attr(
+                    m,
+                    "layernorm",
+                    "norm",
+                    "dinov2.layernorm",
+                    "dinov2.norm",
+                )
+                self._num_features = getattr(getattr(m, "config", None), "hidden_size", None)
+
+                if self._blocks is None or self._norm is None or self._num_features is None:
+                    raise AttributeError(
+                        "Unsupported Hibou backbone structure returned by transformers."
+                    )
 
             @property
             def blocks(self):
-                return self._m.blocks
+                return self._blocks
 
             @property
             def norm(self):
-                return self._m.norm
+                return self._norm
 
             @property
             def num_features(self):
-                return self._m.num_features
+                return self._num_features
 
             def forward(self, x):
-                feat = self._m.forward_features(x)
-                # timm ViT forward_features → (B, N, D); CLS token at index 0
-                return feat[:, 0] if feat.dim() == 3 else feat
+                outputs = self._m(pixel_values=x)
+                pooled = getattr(outputs, "pooler_output", None)
+                if pooled is not None:
+                    return pooled
 
-        backbone = _HibouBackbone(_timm_model)
+                last_hidden = getattr(outputs, "last_hidden_state", None)
+                if last_hidden is not None:
+                    return last_hidden[:, 0]
+
+                if isinstance(outputs, (tuple, list)) and outputs:
+                    return outputs[0][:, 0]
+
+                raise AttributeError("Unexpected Hibou output structure.")
+
+        backbone = _HibouBackbone(_hf_model)
     else:
         backbone = torch.hub.load("facebookresearch/dinov2", model_name)
 

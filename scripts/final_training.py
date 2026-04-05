@@ -26,7 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from dlmi.utils import set_seed, get_device
 from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
-from dlmi.transforms import get_ood_transform
+from dlmi.transforms import get_default_img_size, get_ood_transform
 from dlmi.train import train_one_epoch
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -46,7 +46,7 @@ parser.add_argument("--num_epochs", type=int, default=40,
 parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--lr_head", type=float, default=1e-3)
 parser.add_argument("--lr_backbone", type=float, default=1e-5)
-parser.add_argument("--img_size", type=int, default=98)
+parser.add_argument("--img_size", type=int, default=None)
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--num_workers", type=int, default=4)
 args = parser.parse_args()
@@ -70,10 +70,17 @@ print(f"Device: {device}")
 print(f"Model: {MODEL_NAME}  |  Unfreeze: {NUM_UNFREEZE}")
 print(f"Epochs: {args.num_epochs}  |  Batch: {args.batch_size}")
 
+img_size = (
+    args.img_size
+    if args.img_size is not None
+    else get_default_img_size(MODEL_NAME)
+)
+print(f"Image size: {img_size}")
+
 # ----------------------
 # Data — all 4 centers
 # ----------------------
-transform = get_ood_transform(size=args.img_size, train=True)
+transform = get_ood_transform(size=img_size, train=True, model_name=MODEL_NAME)
 
 train_ds = H5Dataset(str(TRAIN_PATH), transform=transform, mode="train")  # centers 0, 3, 4
 val_ds = H5Dataset(str(VAL_PATH), transform=transform, mode="train")      # center 1

@@ -50,6 +50,7 @@ check("Python version", lambda: sys.version.split()[0])
 check("torch", lambda: __import__("torch").__version__)
 check("h5py", lambda: __import__("h5py").__version__)
 check("timm", lambda: __import__("timm").__version__)
+check("transformers", lambda: __import__("transformers").__version__)
 check("torchmetrics", lambda: __import__("torchmetrics").__version__)
 check("dlmi.dataset", lambda: __import__("dlmi.dataset"))
 check("dlmi.model", lambda: __import__("dlmi.model"))
@@ -69,9 +70,12 @@ if torch.cuda.is_available():
 # 3. Data
 print("\n3. Data files")
 from dlmi.dataset import H5Dataset
-from dlmi.transforms import get_ood_transform
+from dlmi.transforms import get_default_img_size, get_ood_transform
 
-transform = get_ood_transform(size=98, train=False)
+img_size = get_default_img_size(args.model_name)
+print(f"Using image size: {img_size}")
+
+transform = get_ood_transform(size=img_size, train=False, model_name=args.model_name)
 
 def _check_h5(path):
     ds = H5Dataset(path, transform=transform, mode="train")

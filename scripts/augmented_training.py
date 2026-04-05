@@ -16,7 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from dlmi.utils import set_seed, get_device
 from dlmi.dataset import H5Dataset
 from dlmi.model import get_finetunable_dinov2
-from dlmi.transforms import get_ood_transform
+from dlmi.transforms import get_default_img_size, get_ood_transform
 from dlmi.train import train
 from dlmi.test import evaluate_no_tta, evaluate_with_tta
 
@@ -60,7 +60,7 @@ BATCH_SIZE = 16
 LR = 0.001
 NUM_EPOCHS = 100
 PATIENCE = 10
-IMG_SIZE = 98
+IMG_SIZE = get_default_img_size(MODEL_NAME)
 
 # %%
 set_seed(SEED)
@@ -76,8 +76,8 @@ print(f"Val path: {VAL_PATH}")
 
 # %%
 # Data
-train_preprocessing = get_ood_transform(size=IMG_SIZE, train=True)
-val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False)
+train_preprocessing = get_ood_transform(size=IMG_SIZE, train=True, model_name=MODEL_NAME)
+val_preprocessing = get_ood_transform(size=IMG_SIZE, train=False, model_name=MODEL_NAME)
 
 train_ds = H5Dataset(str(TRAIN_PATH), transform=train_preprocessing, mode="train")
 val_ds = H5Dataset(str(VAL_PATH), transform=val_preprocessing, mode="train")
