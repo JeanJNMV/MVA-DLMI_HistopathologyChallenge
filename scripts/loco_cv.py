@@ -138,7 +138,10 @@ def run_one_fold(
     save_path = None
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, f"loco_fold{fold_idx}_{model_name}_{num_unfreeze}layers.pth")
+        save_path = os.path.join(
+            save_dir,
+            f"loco_center{held_out_center}_{model_name}_{num_unfreeze}layers.pth",
+        )
 
     history = train(
         model,
