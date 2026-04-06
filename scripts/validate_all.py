@@ -71,7 +71,10 @@ for model_name in MODEL_NAMES:
         print(f"{'=' * 60}")
 
         model = get_finetunable_dinov2(
-            model_name, num_blocks_to_unfreeze=nb_layers, device=device
+            model_name,
+            num_blocks_to_unfreeze=nb_layers,
+            device=device,
+            use_mixstyle=True,
         )
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.eval()

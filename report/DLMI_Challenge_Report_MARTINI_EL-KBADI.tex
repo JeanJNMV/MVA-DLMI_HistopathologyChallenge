@@ -9,7 +9,7 @@
 
 \title[Histopathology OOD Classification]{MVA DLMI 2026 - Histopathology OOD Classification} 
 
-\midlauthor{\textbf{Team: TODO}  \\
+\midlauthor{\textbf{Team: Ayoub \& Jean}  \\
   \Name{Jean-Vincent Martini\nametag{$^{1,2}$}} \Email{jean-vincent.martini@ens-paris-saclay.fr} \AND  
 \Name{Ayoub El Kbadi\nametag{$^{1,2}$}} \Email{ayoub.kbdi@gmail.com}\\
 \addr $^{1}$ CentraleSupélec \\
@@ -52,11 +52,17 @@ clearly deliver the solution, providing detailed explanations of each step.
 \end{comment}
 
 \begin{abstract}
-This is a great paper and it has a concise abstract. The full code is available at \url{https://github.com/JeanJNMV/MVA-DLMI_HistopathologyChallenge}.
-\end{abstract} 
+
+Deep learning models for computational pathology often suffer from performance degradation when deployed across medical centers due to domain shifts induced by variations in staining protocols, imaging devices, and tissue preparation. In this work, we address the problem of out-of-distribution (OOD) generalization for histopathology patch classification in the context of a multi-center setting. We propose a robust pipeline built upon DINOv2 self-supervised vision transformers, combining partial fine-tuning of the backbone with stain-aware data augmentation and test-time augmentation (TTA). 
+
+We systematically investigate the impact of model capacity, fine-tuning depth, and domain generalization techniques such as MixStyle and stain-space augmentations. Through extensive ablation studies and hyperparameter optimization, we show that selectively unfreezing a small number of transformer blocks significantly improves generalization to unseen centers. While advanced augmentation strategies provide marginal gains, we find that a carefully tuned fine-tuning strategy coupled with TTA yields the best performance. 
+
+Our final model achieves strong accuracy on unseen domains, demonstrating that leveraging pretrained representations with controlled adaptation is an effective approach to mitigate domain shift in histopathology. These results highlight the importance of balancing invariance and adaptability when designing models for real-world clinical deployment. The full code is available at: \url{https://github.com/JeanJNMV/MVA-DLMI_HistopathologyChallenge}.
+
+\end{abstract}
 
 \begin{keywords}
-List of keywords, comma separated.
+Computational pathology, out-of-distribution generalization, domain shift, histopathology image analysis, vision transformers, transfer learning, domain generalization
 \end{keywords}
 
 \section{Introduction and Problem Definition}
@@ -117,44 +123,71 @@ As a final component, we incorporate test-time augmentation (TTA) \cite{shanmuga
 For model selection, we report both standard validation accuracy and TTA-enhanced accuracy, and base the final choice on both metrics. This ensures that improvements are not solely driven by inference-time augmentation while still leveraging TTA as a practical performance booster.
 
 \section{Model Tuning and Comparison}
-\subsection{Experimental Setup}
-\subsection{Experiments and Results}
+
+We first conducted an ablation study starting from the baseline configuration described previously, in which the DINOv2 backbone is fully frozen and only a linear head is trained. From this reference point, we progressively modified two key factors: the backbone variant (small, base, large) and the number of unfrozen transformer blocks. This allowed us to isolate the impact of the number of learnable parameters and assess the trade-off between model capacity and generalization performance.
+
+The results of this study are reported in Figure~\ref{fig:image1} (without TTA) and Figure~\ref{fig:image2} (with TTA). Several important trends emerge. First, all configurations significantly outperform the baseline, which achieved a validation accuracy of $0.87$, with the best models reaching up to $0.9494$. Increasing the model size consistently improves performance, highlighting the benefit of higher-capacity representations for this task. However, this comes at the cost of increased computational requirements, both in terms of memory and training time.
+
+Second, partially fine-tuning the backbone proves crucial. Allowing a small number of layers to adapt (typically between 3 and 5) yields substantial gains over the frozen setting. In contrast, unfreezing more than 5 layers leads to diminishing returns, and in some cases slight degradation, likely due to overfitting or the disruption of pretrained representations.
+
+Finally, test-time augmentation (TTA) consistently improves performance across all configurations. The gains are systematic and non-negligible, confirming that averaging predictions over geometric transformations reduces variance and improves robustness to distribution shifts. This makes TTA a simple yet effective component of the final pipeline.
+
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{img/valacc_no_tta.png}
+    \caption{This is the first image.}
+    \label{fig:image1}
+  \end{minipage}\hfill
+  \begin{minipage}{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{img/valacc_tta.png}
+    \caption{This is the second image.}
+    \label{fig:image2}
+  \end{minipage}
+\end{figure}
+
+Building on these observations, we performed a more in-depth hyperparameter optimization using Optuna. This search jointly explored architectural and optimization parameters, including learning rates for the head and backbone, number of unfrozen layers, augmentation strategies, and batch size. The best configuration obtained is summarized in Table~\ref{tab:best_config}. 
+
+\begin{table}[htbp]
+\centering
+\caption{Best configuration obtained after hyperparameter optimization.}
+\label{tab:best_config}
+\begin{tabular}{ll}
+\bfseries Parameter & \bfseries Value \\
+\hline
+Model & \texttt{dinov2\_vitl14} \\
+Number of unfrozen layers & 5 \\
+Use MixStyle & False \\
+MixStyle probability ($p$) & 0.5 \\
+MixStyle alpha ($\alpha$) & 0.1 \\
+Head learning rate & $1.36 \times 10^{-3}$ \\
+Backbone learning rate & $6.25 \times 10^{-6}$ \\
+Batch size & 32 \\
+HED jittering strength ($\theta$) & 0.065 \\
+Use StainMix & False \\
+StainMix alpha & 0.3 \\
+Stain bank size & 1000 \\
+\end{tabular}
+\end{table}
+
+Interestingly, the optimal configuration does not rely on the additional domain generalization techniques such as MixStyle or StainMix, suggesting that the combination of partial fine-tuning, careful learning rate tuning, and TTA is sufficient to achieve strong generalization. The selected model (\texttt{dinov2\_vitl14} with 5 unfrozen layers) provides an effective balance between performance and computational cost, reaching a validation accuracy of $0.9559$, which constitutes our best result.
 
 \section{Conclusion}
 
-\begin{table}[htbp]
-\floatconts
-  {tab:example}%
-  {\caption{An Example Table}}%
-  {\begin{tabular}{ll}
-  \bfseries Dataset & \bfseries Result\\
-  Data1 & 0.12345\\
-  Data2 & 0.67890\\
-  Data3 & 0.54321\\
-  Data4 & 0.09876
-  \end{tabular}}
-\end{table}
+In this work, we tackled the problem of out-of-distribution generalization in histopathology image classification across acquisition centers. We proposed a pipeline combining a pretrained DINOv2 backbone with partial fine-tuning, stain-space data augmentation, and test-time augmentation. Through systematic experimentation and hyperparameter optimization, we identified a configuration that achieves strong performance on the validation set, demonstrating the effectiveness of our approach in mitigating domain shift. Future work could explore more advanced domain adaptation techniques, such as adversarial training or meta-learning, to further enhance robustness to unseen centers.
 
 
 
-\begin{algorithm2e}
-\caption{Random example}
-\label{alg:net}
-\KwIn{$x_1, \ldots, x_n, w_1, \ldots, w_n$}
-\KwOut{$y$, the net activation}
-$y\leftarrow 0$\;
-\For{$i\leftarrow 1$ \KwTo $n$}{
-  $y \leftarrow y + w_i*x_i$\;
-}
-\end{algorithm2e} 
 
 \clearpage  
-
-\midlacknowledgments{We thank a bunch of people.}
 
 
 \bibliography{bibliography}
 
+\clearpage  
 
 \appendix
 

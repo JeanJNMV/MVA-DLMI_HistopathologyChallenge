@@ -18,4 +18,6 @@ models/
 *.md
 !README.md
 
+*.json
+
 *copy*

@@ -51,7 +51,10 @@ SUBMISSION_PATH = str(
 )
 
 model = get_finetunable_dinov2(
-    MODEL_NAME, num_blocks_to_unfreeze=NB_LAYERS_TO_FINE_TUNE, device=device
+    MODEL_NAME,
+    num_blocks_to_unfreeze=NB_LAYERS_TO_FINE_TUNE,
+    device=device,
+    use_mixstyle=True,
 )
 model.load_state_dict(
     torch.load(MODEL_SAVE_PATH, map_location=device, weights_only=True)
@@ -77,7 +80,10 @@ submission_no_tta = save_submission(
 print(f"Submission (no TTA) saved ({len(submission_no_tta)} rows)")
 
 model = get_finetunable_dinov2(
-    MODEL_NAME, num_blocks_to_unfreeze=NB_LAYERS_TO_FINE_TUNE, device=device
+    MODEL_NAME,
+    num_blocks_to_unfreeze=NB_LAYERS_TO_FINE_TUNE,
+    device=device,
+    use_mixstyle=True,
 )
 model.load_state_dict(
     torch.load(MODEL_SAVE_PATH, map_location=device, weights_only=True)
