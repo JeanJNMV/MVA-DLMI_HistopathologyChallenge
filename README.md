@@ -9,7 +9,9 @@ The task is binary classification of whole-slide-image patches under significant
 - **MixStyle** domain-generalization regularization applied in token space
 - **HED stain jitter** and **StainMix** augmentations to simulate inter-center stain variability
 - **Test-Time Augmentation (TTA)** via geometric transforms (flips + rotations)
-- Hyperparameter search with **Optuna** 
+- **Leave-One-Center-Out (LOCO)** cross-validation for robust model selection
+- Hyperparameter search with **Optuna** (TPE sampler)
+- Final training on combined train+val data with cosine annealing & mixed-precision
 
 ## Project Structure
 
@@ -28,11 +30,19 @@ The task is binary classification of whole-slide-image patches under significant
 │   ├── val_results_no_tta.json  # Validation accuracy without TTA
 │   ├── val_results_tta.json     # Validation accuracy with TTA
 │   └── *.csv                    # Kaggle submission files
+├── report/                      # LaTeX report & bibliography
 ├── scripts/
 │   ├── augmented_training.py    # Train a single model checkpoint
+│   ├── final_training.py        # Train on combined train+val (all centers)
+│   ├── loco_cv.py               # Leave-One-Center-Out cross-validation
+│   ├── aggregate_loco_results.py# Aggregate LOCO fold results into summary
+│   ├── optuna_search.py         # Hyperparameter search with Optuna
 │   ├── validate_all.py          # Evaluate all checkpoints on the val set
 │   ├── generate_submissions.py  # Generate Kaggle CSV files
-│   └── optuna_search.py         # Hyperparameter search with Optuna
+│   ├── smoke_test.py            # Verify install, GPU, data & model loading
+│   ├── final_training.slurm     # SLURM job for final training (gpua100)
+│   ├── loco_array.slurm         # SLURM array job for parallel LOCO CV
+│   └── smoke_test.slurm         # SLURM quick smoke-test job
 └── src/dlmi/
     ├── dataset.py               # H5Dataset & PrecomputedDataset
     ├── model.py                 # DINOv2 backbones + MixStyle + linear head
@@ -65,51 +75,7 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-Alternatively, install only the runtime requirements:
-
-```bash
-pip install -r requirements.txt
-```
-
-Or with uv using the command `uv sync` in your terminal.
-
-Place the provided HDF5 data files (`train.h5`, `val.h5`, `test.h5`) inside the `data/` directory.
-
-### Training a model
-
-```bash
-python scripts/augmented_training.py \
-    --model_name dinov2_vitl14 \
-    --num_unfreeze 5
-```
-
-Key defaults: batch size 16, lr 1e-3, 100 epochs with patience-10 early stopping, MixStyle enabled.
-
-The best checkpoint is saved to `models/augmented_<model_name>_<num_unfreeze>_layers.pth` and the training curves to `results/training_curves/`.
-
-### Evaluating all checkpoints
-
-```bash
-python scripts/validate_all.py
-```
-
-Results are saved to `results/val_results_no_tta.json` and `results/val_results_tta.json`.
-
-### Generating a Kaggle submission
-
-```bash
-python scripts/generate_submissions.py
-```
-
-Produces `results/submission_<model_name>_<layers>_layers_{no_tta,tta}.csv`.
-
-### Hyperparameter search
-
-```bash
-python scripts/optuna_search.py
-```
-
-Uses Optuna TPE to explore model size, number of unfrozen blocks, augmentation strength, and optimizer settings.
+Alternatively, you can use `uv sync` in your terminal if you have `uv` installed.
 
 ---
 

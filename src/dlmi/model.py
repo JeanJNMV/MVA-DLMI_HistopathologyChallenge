@@ -81,11 +81,75 @@ class HibouBackbone(nn.Module):
         raise AttributeError("Unexpected Hibou output structure.")
 
 
+class MixStyle(nn.Module):
+    """Mix instance-level feature statistics across samples in a batch.
+
+    Targets domain shift by interpolating channel-wise mean and std
+    between randomly paired samples, simulating unseen domain styles.
+
+    Applied in token space: (B, N_tokens, D) from ViT blocks.
+
+    Parameters
+    ----------
+    p : float
+        Probability of applying MixStyle on a given forward pass.
+    alpha : float
+        Beta distribution concentration — higher = more mixing.
+
+    References
+    ----------
+    Zhou et al., "Domain Generalization with MixStyle", ICLR 2021.
+    """
+
+    def __init__(self, p=0.5, alpha=0.1):
+        super().__init__()
+        self.p = p
+        self.alpha = alpha
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not self.training or torch.rand(1).item() > self.p:
+            return x
+
+        B, N, D = x.shape
+
+        mu = x.mean(dim=1, keepdim=True)
+        sigma = x.std(dim=1, keepdim=True) + 1e-6
+        x_norm = (x - mu) / sigma
+
+        lam = (
+            torch.distributions.Beta(self.alpha, self.alpha)
+            .sample((B,))
+            .to(x.device)
+        )
+        lam = torch.max(lam, 1 - lam).view(B, 1, 1)
+
+        perm = torch.randperm(B, device=x.device)
+        mu2, sigma2 = mu[perm], sigma[perm]
+
+        mu_mix = lam * mu + (1 - lam) * mu2
+        sigma_mix = lam * sigma + (1 - lam) * sigma2
+        return x_norm * sigma_mix + mu_mix
+
+
 class DinoWithHead(nn.Module):
-    def __init__(self, backbone, feat_dim):
+    def __init__(self, backbone, feat_dim, mixstyle_blocks=None,
+                 mixstyle_p=0.5, mixstyle_alpha=0.1):
         super().__init__()
         self.backbone = backbone
         self.head = nn.Sequential(nn.Linear(feat_dim, 1))
+
+        mixstyle_blocks = mixstyle_blocks or []
+        self.mixstyles = nn.ModuleList(
+            [MixStyle(p=mixstyle_p, alpha=mixstyle_alpha) for _ in mixstyle_blocks]
+        )
+        for ms, block_idx in zip(self.mixstyles, mixstyle_blocks):
+            backbone.blocks[block_idx].register_forward_hook(self._make_hook(ms))
+
+    @staticmethod
+    def _make_hook(ms_module):
+        def hook(module, input, output):
+            return ms_module(output)
+        return hook
 
     def forward_logits(self, x):
         return self.head(self.backbone(x))
@@ -178,120 +242,18 @@ def get_finetunable_dinov2(
 
     for param in backbone.parameters():
         param.requires_grad = False
-    for block in backbone.blocks[-num_blocks_to_unfreeze:]:
-        for param in block.parameters():
-            param.requires_grad = True
+    if num_blocks_to_unfreeze > 0:
+        for block in backbone.blocks[-num_blocks_to_unfreeze:]:
+            for param in block.parameters():
+                param.requires_grad = True
     for param in backbone.norm.parameters():
         param.requires_grad = True
-
-    # MixStyle module definition
-    class MixStyle(nn.Module):
-        """Mix instance-level feature statistics across samples in a batch.
-
-        Targets domain shift by interpolating channel-wise mean and std
-        between randomly paired samples, simulating unseen domain styles.
-
-        Applied in token space: (B, N_tokens, D) from ViT blocks.
-
-        Parameters
-        ----------
-        p : float
-            Probability of applying MixStyle on a given forward pass.
-        alpha : float
-            Beta distribution concentration — higher = more mixing.
-
-        References
-        ----------
-        Zhou et al., "Domain Generalization with MixStyle", ICLR 2021.
-        """
-
-        def __init__(self, p=0.5, alpha=0.1):
-            super().__init__()
-            self.p = p
-            self.alpha = alpha
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            """Apply MixStyle to a token sequence.
-
-            Parameters
-            ----------
-            x : torch.Tensor
-                Token tensor of shape (B, N_tokens, D).
-
-            Returns
-            -------
-            torch.Tensor
-                Style-mixed tensor of shape (B, N_tokens, D).
-            """
-            if not self.training or torch.rand(1).item() > self.p:
-                return x
-
-            B, N, D = x.shape
-
-            # Compute per-sample statistics across the token dimension
-            mu = x.mean(dim=1, keepdim=True)  # (B, 1, D)
-            sigma = x.std(dim=1, keepdim=True) + 1e-6  # (B, 1, D)
-            x_norm = (x - mu) / sigma
-
-            # Sample Beta mixing weights, bias toward stronger of the two
-            lam = (
-                torch.distributions.Beta(self.alpha, self.alpha)
-                .sample((B,))
-                .to(x.device)
-            )  # (B,)
-            lam = torch.max(lam, 1 - lam).view(B, 1, 1)  # (B, 1, 1)
-
-            # Random pairing within the batch
-            perm = torch.randperm(B, device=x.device)
-            mu2, sigma2 = mu[perm], sigma[perm]
-
-            # Interpolate statistics and re-apply
-            mu_mix = lam * mu + (1 - lam) * mu2
-            sigma_mix = lam * sigma + (1 - lam) * sigma2
-            return x_norm * sigma_mix + mu_mix
-
-    class DinoWithHead(nn.Module):
-        """DINOv2 backbone with a binary classification head.
-
-        Parameters
-        ----------
-        backbone : torch.nn.Module
-            DINOv2 feature extractor.
-        feat_dim : int
-            Dimension of the backbone output features.
-        mixstyle_blocks : list[int]
-            Indices of transformer blocks after which MixStyle is applied.
-        """
-
-        def __init__(self, backbone, feat_dim, mixstyle_blocks):
-            super().__init__()
-            self.backbone = backbone
-            self.head = nn.Sequential(nn.Linear(feat_dim, 1), nn.Sigmoid())
-
-            # Register one MixStyle module per hook location
-            self.mixstyles = nn.ModuleList(
-                [MixStyle(p=mixstyle_p, alpha=mixstyle_alpha) for _ in mixstyle_blocks]
-            )
-
-            # Attach hooks — capture the MixStyle ref in the closure
-            for ms, block_idx in zip(self.mixstyles, mixstyle_blocks):
-                backbone.blocks[block_idx].register_forward_hook(self._make_hook(ms))
-
-        @staticmethod
-        def _make_hook(ms_module):
-            """Closure so each hook captures its own MixStyle instance."""
-
-            def hook(module, input, output):
-                return ms_module(output)
-
-            return hook
-
-        def forward(self, x):
-            features = self.backbone(x)
-            return self.head(features)
 
     # Apply MixStyle after blocks 3 and 6 (early-to-mid network)
     mixstyle_blocks = [3, 6] if use_mixstyle else []
 
-    model = DinoWithHead(backbone, backbone.num_features, mixstyle_blocks).to(device)
+    model = DinoWithHead(
+        backbone, backbone.num_features, mixstyle_blocks,
+        mixstyle_p=mixstyle_p, mixstyle_alpha=mixstyle_alpha,
+    ).to(device)
     return model

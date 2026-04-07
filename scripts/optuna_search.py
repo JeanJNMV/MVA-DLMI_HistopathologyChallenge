@@ -12,7 +12,6 @@ import optuna
 import torch
 import torchmetrics
 import torchvision.transforms as T
-import warnings
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 

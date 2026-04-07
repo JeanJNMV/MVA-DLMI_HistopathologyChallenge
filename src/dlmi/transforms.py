@@ -2,7 +2,6 @@ import random
 
 import torch
 import torchvision.transforms as T
-import random
 
 _HIBOU_MODELS = {"hibou-b", "hibou-l"}
 _HIBOU_MEAN = [0.7068, 0.5755, 0.7220]
@@ -167,41 +166,6 @@ class StainMix:
         return img_aug.clamp(0.0, 1.0)
 
 
-def get_ood_transform(size=98, train=True, stain_bank=None):
-    """Return an OOD-robust transform pipeline.
-
-    Parameters
-    ----------
-    size : int, optional
-        Target height and width in pixels.
-    train : bool, optional
-        If True, include augmentation transforms.
-    stain_bank : list[torch.Tensor] or None, optional
-        Stain bank built by build_stain_bank(). Required for StainMix
-        during training. If None, StainMix is skipped.
-
-    Returns
-    -------
-    torchvision.transforms.Compose
-        Composed transform pipeline.
-    """
-    if train:
-        augs = [
-            T.Resize((size, size)),
-            HEDJitter(theta=0.05),
-        ]
-        if stain_bank is not None:
-            augs.append(StainMix(stain_bank, alpha=0.3))
-        augs += [
-            T.RandomHorizontalFlip(),
-            T.RandomVerticalFlip(),
-            T.RandomRotation(90),
-        ]
-        return T.Compose(augs)
-    else:
-        return T.Resize((size, size))
-
-
 def get_d4_transforms(img: torch.Tensor):
     rotations = [torch.rot90(img, k, dims=(-2, -1)) for k in range(4)]
     return rotations + [torch.flip(rot, dims=(-1,)) for rot in rotations]
@@ -212,22 +176,45 @@ class RandomD4:
         return get_d4_transforms(img)[random.randrange(8)]
 
 
-def get_ood_transform(size=None, train=True, model_name="dinov2_vits14"):
+def get_ood_transform(size=None, train=True, model_name="dinov2_vits14", stain_bank=None):
+    """Return an OOD-robust transform pipeline.
+
+    Parameters
+    ----------
+    size : int or None, optional
+        Target height and width in pixels.  Defaults to the model's native size.
+    train : bool, optional
+        If True, include augmentation transforms.
+    model_name : str, optional
+        Model name used to select Hibou-specific normalisation.
+    stain_bank : list[torch.Tensor] or None, optional
+        Stain bank built by build_stain_bank(). When provided during training,
+        a StainMix step is added to the pipeline.
+
+    Returns
+    -------
+    torchvision.transforms.Compose
+        Composed transform pipeline.
+    """
     size = get_default_img_size(model_name) if size is None else size
 
     if model_name in _HIBOU_MODELS:
         transforms = [T.Resize((size, size)), ToUnitInterval()]
         if train:
-            transforms.extend([HEDJitter(theta=0.05), RandomD4()])
+            transforms.append(HEDJitter(theta=0.05))
+            if stain_bank is not None:
+                transforms.append(StainMix(stain_bank, alpha=0.3))
+            transforms.append(RandomD4())
         transforms.append(T.Normalize(mean=_HIBOU_MEAN, std=_HIBOU_STD))
         return T.Compose(transforms)
 
     if train:
-        return T.Compose(
-            [
-                T.Resize((size, size)),
-                HEDJitter(theta=0.05),
-                RandomD4(),
-            ]
-        )
+        augs = [
+            T.Resize((size, size)),
+            HEDJitter(theta=0.05),
+        ]
+        if stain_bank is not None:
+            augs.append(StainMix(stain_bank, alpha=0.3))
+        augs.append(RandomD4())
+        return T.Compose(augs)
     return T.Resize((size, size))

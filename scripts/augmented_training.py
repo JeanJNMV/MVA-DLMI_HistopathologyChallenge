@@ -11,7 +11,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 import torchmetrics
-from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
