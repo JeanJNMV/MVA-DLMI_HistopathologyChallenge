@@ -10,26 +10,20 @@
 #SBATCH --output=logs/final_%j.out
 #SBATCH --error=logs/final_%j.err
 
-# Usage (set hyperparams from LOCO results):
-#   sbatch --export=MODEL_NAME=hibou-l,NUM_UNFREEZE=2,NUM_EPOCHS=40 scripts/final_training.slurm
-
 set -euo pipefail
 
-# --- Ruche modules ---
 module purge
 PYTHON_MODULE="${PYTHON_MODULE:-python/3.14.0/gcc-15.1.0}"
 CUDA_MODULE="${CUDA_MODULE:-cuda/13.0.2/none-none}"
 module load "$PYTHON_MODULE"
 module load "$CUDA_MODULE"
 
-# --- Paths ---
 WORK_ROOT="${WORKDIR:-/workdir/$USER}"
 PROJECT_DIR="${PROJECT_DIR:-$WORK_ROOT/MVA-DLMI_Histopathology_Challenge}"
 PYTHON_BIN="${PYTHON_BIN:-$PROJECT_DIR/.venv/bin/python}"
 export HF_HOME="${HF_HOME:-$WORK_ROOT/.cache/huggingface}"
 export TORCH_HOME="${TORCH_HOME:-$WORK_ROOT/.cache/torch}"
 
-# --- Config (from LOCO results) ---
 MODEL_NAME="${MODEL_NAME:-hibou-l}"
 NUM_UNFREEZE="${NUM_UNFREEZE:-2}"
 NUM_EPOCHS="${NUM_EPOCHS:-40}"

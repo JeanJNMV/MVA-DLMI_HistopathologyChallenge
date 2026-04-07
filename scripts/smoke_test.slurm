@@ -10,11 +10,6 @@
 #SBATCH --output=logs/smoke_%j.out
 #SBATCH --error=logs/smoke_%j.err
 
-# Step 0: verify the environment before any full training.
-# Usage:
-#   sbatch scripts/smoke_test.slurm                      # quick check on gpu_test (V100)
-#   sbatch --export=MODEL_NAME=hibou-l scripts/smoke_test.slurm  # also test HuggingFace download
-
 set -euo pipefail
 
 module purge

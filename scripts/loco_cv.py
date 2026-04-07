@@ -1,18 +1,3 @@
-"""Leave-One-Center-Out (LOCO) cross-validation for hyperparameter selection.
-
-For each fold, one of the 3 training centers (0, 3, 4) is held out as a
-simulated OOD validation set, and the model is trained on the remaining two.
-This gives an unbiased estimate of generalization to unseen centers, avoiding
-the optimistic bias that comes from tuning hyperparameters directly on the
-official validation set (center 1).
-
-Usage
------
-    python scripts/loco_cv.py --model_name dinov2_vits14 --num_unfreeze 2
-
-The script reports per-fold accuracy and the mean LOCO accuracy.
-"""
-
 import argparse
 import json
 import os
@@ -37,7 +22,6 @@ from dlmi.test import evaluate_no_tta
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Training centers available in train.h5
 ALL_TRAIN_CENTERS = [0, 3, 4]
 
 
@@ -58,44 +42,6 @@ def run_one_fold(
     save_dir=None,
     num_workers=0,
 ):
-    """Train on `train_centers` and evaluate on `held_out_center`.
-
-    Parameters
-    ----------
-    fold_idx : int
-        Fold number (for logging/saving).
-    held_out_center : int
-        Center ID used as simulated OOD validation.
-    train_centers : list of int
-        Center IDs used for training.
-    train_path : str
-        Path to the training HDF5 file.
-    model_name : str
-        DINOv2 variant name.
-    num_unfreeze : int
-        Number of transformer blocks to unfreeze.
-    device : torch.device
-        Compute device.
-    batch_size : int
-        Batch size.
-    lr_head : float
-        Learning rate for the classification head.
-    lr_backbone : float
-        Learning rate for unfrozen backbone layers.
-    num_epochs : int
-        Maximum training epochs.
-    patience : int
-        Early stopping patience.
-    img_size : int
-        Input image size.
-    save_dir : str or None
-        Directory to save fold model checkpoints.
-
-    Returns
-    -------
-    float
-        Validation accuracy on the held-out center.
-    """
     print(f"\n{'='*60}")
     print(f"Fold {fold_idx}: train on centers {train_centers}, validate on center {held_out_center}")
     print(f"{'='*60}")
@@ -119,7 +65,6 @@ def run_one_fold(
     train_loader = DataLoader(train_ds, shuffle=True, **loader_kwargs)
     val_loader = DataLoader(val_ds, shuffle=False, **loader_kwargs)
 
-    # Fresh model for each fold
     model = get_finetunable_dinov2(model_name, num_blocks_to_unfreeze=num_unfreeze, device=device)
 
     criterion = torch.nn.BCEWithLogitsLoss()
@@ -156,7 +101,6 @@ def run_one_fold(
         save_path=save_path,
     )
 
-    # Reload best checkpoint for evaluation
     if save_path and os.path.exists(save_path):
         model.load_state_dict(torch.load(save_path, weights_only=True, map_location=device))
 
@@ -243,7 +187,6 @@ def main():
         print(f"  Mean LOCO accuracy:    {mean_acc:.4f}")
     print(f"{'='*60}")
 
-    # Save results
     os.makedirs(args.results_dir, exist_ok=True)
     suffix = (
         f"_center{args.held_out_center}"

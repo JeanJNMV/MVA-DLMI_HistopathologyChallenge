@@ -11,38 +11,26 @@
 #SBATCH --output=logs/loco_%A_%a.out
 #SBATCH --error=logs/loco_%A_%a.err
 
-# Usage:
-#   sbatch scripts/loco_array.slurm                          # dinov2_vitl14, 5 layers (defaults)
-#   sbatch --export=MODEL_NAME=hibou-l,NUM_UNFREEZE=2 scripts/loco_array.slurm
-#   sbatch --export=MODEL_NAME=dinov2_vitl14,NUM_UNFREEZE=3 scripts/loco_array.slurm
-
 set -euo pipefail
 
-# --- Ruche modules (adapt to your environment) ---
 module purge
 PYTHON_MODULE="${PYTHON_MODULE:-python/3.14.0/gcc-15.1.0}"
 CUDA_MODULE="${CUDA_MODULE:-cuda/13.0.2/none-none}"
 module load "$PYTHON_MODULE"
 module load "$CUDA_MODULE"
 
-# --- Paths ---
 WORK_ROOT="${WORKDIR:-/workdir/$USER}"
 PROJECT_DIR="${PROJECT_DIR:-$WORK_ROOT/MVA-DLMI_Histopathology_Challenge}"
 PYTHON_BIN="${PYTHON_BIN:-$PROJECT_DIR/.venv/bin/python}"
-
-# HuggingFace model cache (used by Hibou-L via timm).
-# Point to a shared directory so the model is downloaded only once.
 export HF_HOME="${HF_HOME:-$WORK_ROOT/.cache/huggingface}"
 export TORCH_HOME="${TORCH_HOME:-$WORK_ROOT/.cache/torch}"
 
-# --- Experiment config (override via sbatch --export=KEY=VALUE) ---
 MODEL_NAME="${MODEL_NAME:-dinov2_vitl14}"
 NUM_UNFREEZE="${NUM_UNFREEZE:-5}"
 TRAIN_PATH="${TRAIN_PATH:-$PROJECT_DIR/data/train.h5}"
 SAVE_DIR="${SAVE_DIR:-$PROJECT_DIR/models/loco}"
 RESULTS_DIR="${RESULTS_DIR:-$PROJECT_DIR/results}"
 
-# A100 has enough VRAM for batch 64 with AMP — 4x fewer steps than batch 16.
 BATCH_SIZE="${BATCH_SIZE:-64}"
 LR_HEAD="${LR_HEAD:-1e-3}"
 LR_BACKBONE="${LR_BACKBONE:-1e-5}"
@@ -52,7 +40,6 @@ IMG_SIZE="${IMG_SIZE:-}"
 SEED="${SEED:-0}"
 NUM_WORKERS="${NUM_WORKERS:-$SLURM_CPUS_PER_TASK}"
 
-# --- LOCO fold selection ---
 CENTERS=(0 3 4)
 HELD_OUT_CENTER="${CENTERS[$SLURM_ARRAY_TASK_ID]}"
 

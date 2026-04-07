@@ -1,18 +1,3 @@
-"""Environment smoke test — run this before any full training job on Ruche.
-
-Checks:
-  1. Python version and key imports
-  2. GPU availability and VRAM
-  3. HDF5 data files readable
-  4. Model loads and forward pass works
-  5. DataLoader produces correct batches
-
-Usage
------
-    python scripts/smoke_test.py --train_path data/train.h5 --val_path data/val.h5
-    python scripts/smoke_test.py --model_name hibou-l  # also tests HuggingFace download
-"""
-
 import argparse
 import sys
 import time
@@ -44,7 +29,6 @@ def check(label, fn):
 
 print("\n=== Smoke test ===\n")
 
-# 1. Python
 print("1. Python / imports")
 check("Python version", lambda: sys.version.split()[0])
 check("torch", lambda: __import__("torch").__version__)
@@ -56,9 +40,9 @@ check("dlmi.dataset", lambda: __import__("dlmi.dataset"))
 check("dlmi.model", lambda: __import__("dlmi.model"))
 check("dlmi.train", lambda: __import__("dlmi.train"))
 
-# 2. GPU
 print("\n2. GPU")
 import torch
+
 check("CUDA available", lambda: str(torch.cuda.is_available()))
 if torch.cuda.is_available():
     check("GPU name", lambda: torch.cuda.get_device_name(0))
@@ -67,7 +51,6 @@ if torch.cuda.is_available():
         lambda: f"{torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB",
     )
 
-# 3. Data
 print("\n3. Data files")
 from dlmi.dataset import H5Dataset
 from dlmi.transforms import get_default_img_size, get_ood_transform
@@ -85,7 +68,6 @@ def _check_h5(path):
 check(f"train.h5 ({args.train_path})", lambda: _check_h5(args.train_path))
 check(f"val.h5   ({args.val_path})", lambda: _check_h5(args.val_path))
 
-# 4. Model
 print(f"\n4. Model ({args.model_name}, unfreeze={args.num_unfreeze})")
 from dlmi.model import get_finetunable_dinov2
 from dlmi.utils import get_device
@@ -104,9 +86,9 @@ def _check_model():
 
 check("model load", _check_model)
 
-# 5. Forward pass + DataLoader
 print("\n5. Forward pass")
 from torch.utils.data import DataLoader
+
 
 def _check_forward():
     model = get_finetunable_dinov2(
