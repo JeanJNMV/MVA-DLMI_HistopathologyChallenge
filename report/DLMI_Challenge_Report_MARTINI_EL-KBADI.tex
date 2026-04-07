@@ -1,7 +1,6 @@
 \documentclass{midl} 
 
 \usepackage{float}
-\usepackage{comment}
 \usepackage{mwe} % to get dummy images
 
 \raggedbottom
@@ -24,37 +23,6 @@
 
 \maketitle
 
-\begin{comment}
-  
-Report (11 points)
-The 5-page report should include the following sections (in this specific order):
-● Introduction: (1 point)
-○ Explain the problem
-○ Put the chosen components in context
-● Section 1: Architecture and methodological components (5 points). Regardless of the
-performance achieved, we will reward the research efforts and creativity put into the
-architecture (e.g., model definition, modules, functions). You are expected to:
-1. Explain the motivation and intuition behind your architecture. How did you come up with new models? What is it intended to capture? Did you discard others?
-2. Rigorously report your experiments about the impact of various combinations of blocks, architectures on predictive performance, and, depending on the model,
-how you tackled the dataset.
-● Section 2: Model tuning and comparison (4 points). You are expected to:
-○ Compare and prepare an ablation study with the different components of your
-method.
-○ Explain preprocessing steps or other tricks that helped your model perform well
-for this problem and facilitated your training.
-○ Report the performance on the different sets, the hyperparameters of your
-method as well as the score on the test set (given by Kaggle).
-○ Discuss about any additional models that you have tested but did not perform
-well.
-○ We will also assess the quality of the internal validation procedure. It needs to be
-unbiased so that there is only minimal discrepancy between the internal
-validation and the challenge test set. It needs to be clearly described in the
-report.
-● Report readability (1 point)
-Report organization and readability will be worth 1 point. Best submissions will
-clearly deliver the solution, providing detailed explanations of each step.
-\end{comment}
-
 \begin{abstract}
 
 Deep learning models in computational pathology often lose performance across medical centers due to differences in staining, imaging, and tissue preparation. This work tackles out-of-distribution generalization for histopathology patch classification using a DINOv2-based pipeline with partial fine-tuning, stain-aware augmentation, and test-time augmentation (TTA).
@@ -76,7 +44,6 @@ Naively training a classifier on the source centers and evaluating on the target
 
 \section{Architecture and Methodological Components}
 
-% FAIRE UN PARAGAPHE SUR LA DATA AVEC LA FIGURE UMAP ???
 \paragraph{The Data.} 
 
 The dataset consists of histopathology image patches extracted from whole-slide images (WSIs) of either tumor (class 1) or non-tumor (class 0) tissue. The training set includes patches from three distinct medical centers, while the validation and test sets contain patches from two additional centers not seen during training. Figure~\ref{fig:repartition} illustrates the distribution of samples across centers and classes, highlighting that the class distribution is balanced within each center but not across centers. We also provided in Figure~\ref{fig:umap} a UMAP visualization of the patch embeddings, which reveals which centers are more similar in terms of visual appearance and which ones are more distinct, further motivating the need for domain generalization techniques.
@@ -106,17 +73,6 @@ where $\alpha_c \sim \mathcal{U}(1-\theta,\, 1+\theta)$ is a multiplicative scal
 where $\mathbf{H}$ is the HED representation of the input image, $\boldsymbol{\mu}_\text{src}$ its mean stain vector, $\boldsymbol{\mu}_\text{ref}$ the reference stain vector sampled from the bank, and $\alpha = 0.3$ controls the maximum interpolation strength. This operation shifts the global stain appearance of the image toward that of another training sample, effectively simulating acquisition from a different center while preserving tissue morphology. StainMix is applied after HED jittering, so both local stain perturbations and global stain transfers are combined.
 
 \textbf{Spatial augmentations.} In addition to stain augmentations, the main training pipeline includes standard spatial transforms: random horizontal and vertical flips, and random rotations up to $\pm 90^\circ$. At validation time, only resizing is applied.
-
-% SHORTER VERSION:
-\begin{comment}
-\paragraph{Data Augmentation for OOD Robustness.}
-
-To mitigate the inter-center covariate shift caused by varying staining protocols, we apply HED jittering during training, following Tellez et al.\ \cite{tellez2019quantifying}. Each RGB image is first converted to optical density space via $\mathrm{OD} = -\log(\mathbf{I})$, then projected into Haematoxylin, Eosin, and DAB (HED) stain channels via color deconvolution \cite{ruifrok2001quantification}. Independent random affine perturbations are applied to each channel:
-\begin{equation}
-    \tilde{h}_c = \alpha_c \, h_c + \beta_c, \qquad c \in \{\text{H}, \text{E}, \text{D}\},
-\end{equation}
-where $\alpha_c \sim \mathcal{U}(1-\theta, 1+\theta)$ and $\beta_c \sim \mathcal{U}(-\theta, \theta)$, with $\theta = 0.05$. The perturbed channels are then mapped back to RGB. This stain jittering is complemented by random horizontal and vertical flips and rotations up to $90^\circ$. At validation time, only resizing is applied.
-\end{comment}
 
 \paragraph{Test-Time Augmentation.} 
 
@@ -154,6 +110,7 @@ Finally, test-time augmentation (TTA) consistently improves performance across a
 \paragraph{LOCO validation and Hibou-L exploration.}
 Since the challenge targets generalization to unseen acquisition centers, we implemented a leave-one-center-out (LOCO) validation protocol over the training centers: $(3,4)\rightarrow0$, $(0,4)\rightarrow3$, and $(0,3)\rightarrow4$. This provides a less biased estimate of robustness to center-specific covariate shift than a random split. We also implemented an exploratory pipeline based on Hibou-L, a foundation model specifically designed for histopathology. This branch uses the model-specific preprocessing required by Hibou-L, including $224 \times 224$ inputs, Hibou normalization statistics, HED jittering, and a D4 geometric augmentation that samples exact rotations by multiples of $90^\circ$ and flip symmetries instead of arbitrary-angle rotations. The intended protocol was to compare several partial fine-tuning settings, in particular different numbers of unfrozen transformer blocks such as 2 versus 5, under the same LOCO scheme, then select the most stable configuration before final training on all centers. However, the Biomathematics-associated Ruche accounts were temporarily unavailable during their transfer to a new CDS laboratory, preventing us from completing the full Hibou-L LOCO benchmark in time for the report.
 
+\paragraph{Hyperparameter optimization.}
 Building on these observations, we performed a more in-depth hyperparameter optimization using Optuna. This search jointly explored architectural and optimization parameters, including learning rates for the head and backbone, number of unfrozen layers, augmentation strategies, and batch size. The best configuration obtained is summarized in Table~\ref{tab:best_config}. 
 
 \begin{table}[H]
