@@ -105,7 +105,7 @@ where $\alpha_c \sim \mathcal{U}(1-\theta,\, 1+\theta)$ is a multiplicative scal
     \quad \lambda \sim \mathcal{U}(0,\, \alpha)$,
 where $\mathbf{H}$ is the HED representation of the input image, $\boldsymbol{\mu}_\text{src}$ its mean stain vector, $\boldsymbol{\mu}_\text{ref}$ the reference stain vector sampled from the bank, and $\alpha = 0.3$ controls the maximum interpolation strength. This operation shifts the global stain appearance of the image toward that of another training sample, effectively simulating acquisition from a different center while preserving tissue morphology. StainMix is applied after HED jittering, so both local stain perturbations and global stain transfers are combined.
 
-\textbf{Spatial augmentations.} In addition to stain augmentations, the training pipeline includes standard spatial transforms: random horizontal and vertical flips, and random rotations up to $\pm 90^\circ$. At validation time, only resizing is applied.
+\textbf{Spatial augmentations.} In addition to stain augmentations, the main training pipeline includes standard spatial transforms: random horizontal and vertical flips, and random rotations up to $\pm 90^\circ$. At validation time, only resizing is applied.
 
 % SHORTER VERSION:
 \begin{comment}
@@ -150,6 +150,9 @@ Finally, test-time augmentation (TTA) consistently improves performance across a
     \label{fig:image2}
   \end{minipage}
 \end{figure}
+
+\paragraph{LOCO validation and Hibou-L exploration.}
+Since the challenge targets generalization to unseen acquisition centers, we implemented a leave-one-center-out (LOCO) validation protocol over the training centers: $(3,4)\rightarrow0$, $(0,4)\rightarrow3$, and $(0,3)\rightarrow4$. This provides a less biased estimate of robustness to center-specific covariate shift than a random split. We also implemented an exploratory pipeline based on Hibou-L, a foundation model specifically designed for histopathology. This branch uses the model-specific preprocessing required by Hibou-L, including $224 \times 224$ inputs, Hibou normalization statistics, HED jittering, and a D4 geometric augmentation that samples exact rotations by multiples of $90^\circ$ and flip symmetries instead of arbitrary-angle rotations. The intended protocol was to compare several partial fine-tuning settings, in particular different numbers of unfrozen transformer blocks such as 2 versus 5, under the same LOCO scheme, then select the most stable configuration before final training on all centers. However, the Biomathematics-associated Ruche accounts were temporarily unavailable during their transfer to a new CDS laboratory, preventing us from completing the full Hibou-L LOCO benchmark in time for the report.
 
 Building on these observations, we performed a more in-depth hyperparameter optimization using Optuna. This search jointly explored architectural and optimization parameters, including learning rates for the head and backbone, number of unfrozen layers, augmentation strategies, and batch size. The best configuration obtained is summarized in Table~\ref{tab:best_config}. 
 
