@@ -6,6 +6,7 @@ The task is binary classification of whole-slide-image patches under significant
 
 ## Key Features
 - Fine-tuned [DINOv2](https://github.com/facebookresearch/dinov2) backbones (ViT-S/B/L-14) with partial unfreezing
+- Used [Hibou](https://huggingface.co/histai), a pathology-specialized vision transformers (Hibou-B/L)
 - **MixStyle** domain-generalization regularization applied in token space
 - **HED stain jitter** and **StainMix** augmentations to simulate inter-center stain variability
 - **Test-Time Augmentation (TTA)** via geometric transforms (flips + rotations)
@@ -52,8 +53,6 @@ The task is binary classification of whole-slide-image patches under significant
     └── utils.py                 # Seed, device, submission helpers
 ```
 
----
-
 ## Getting Started
 
 ### Requirements
@@ -76,8 +75,6 @@ pip install -e .
 ```
 
 Alternatively, you can use `uv sync` in your terminal if you have `uv` installed.
-
----
 
 ## Notebooks
 
