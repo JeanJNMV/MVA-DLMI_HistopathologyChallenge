@@ -6,4 +6,7 @@ pandas
 torch
 torchmetrics
 torchvision
+timm
+transformers
 tqdm
+optuna
