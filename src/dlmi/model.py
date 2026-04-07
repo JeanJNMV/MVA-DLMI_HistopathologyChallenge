@@ -51,11 +51,10 @@ def get_finetunable_dinov2(
     model_name="dinov2_vits14",
     num_blocks_to_unfreeze=2,
     device=None,
-    use_mixstyle=True,
+    use_mixstyle=False,
     mixstyle_p=0.5,
     mixstyle_alpha=0.1,
 ):
-
     """Create a finetunable DINOv2 model with optional MixStyle and binary head.
 
     Parameters
@@ -65,7 +64,7 @@ def get_finetunable_dinov2(
     num_blocks_to_unfreeze : int, optional
         Number of final transformer blocks to unfreeze for fine-tuning.
     device : torch.device or None, optional
-        Device to place the model on. Uses CUDA if available when ``None``.
+        Device to place the model on. Uses CUDA if available when "None".
     use_mixstyle : bool, optional
         Whether to insert MixStyle modules as forward hooks into the backbone.
     mixstyle_p : float, optional
@@ -197,7 +196,7 @@ def get_finetunable_dinov2(
             features = self.backbone(x)
             return self.head(features)
 
-    # Apply MixStyle after blocks 3 and 6 (early-to-mid network)  ← NEW
+    # Apply MixStyle after blocks 3 and 6 (early-to-mid network)
     mixstyle_blocks = [3, 6] if use_mixstyle else []
 
     model = DinoWithHead(backbone, backbone.num_features, mixstyle_blocks).to(device)

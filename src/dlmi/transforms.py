@@ -228,10 +228,10 @@ def get_ood_transform(size=98, train=True, stain_bank=None):
     if train:
         augs = [
             T.Resize((size, size)),
-            HEDJitter(theta=0.05),  # ← your existing stain jitter
+            HEDJitter(theta=0.05),
         ]
         if stain_bank is not None:
-            augs.append(StainMix(stain_bank, alpha=0.3))  # ← NEW, after HEDJitter
+            augs.append(StainMix(stain_bank, alpha=0.3))
         augs += [
             T.RandomHorizontalFlip(),
             T.RandomVerticalFlip(),
