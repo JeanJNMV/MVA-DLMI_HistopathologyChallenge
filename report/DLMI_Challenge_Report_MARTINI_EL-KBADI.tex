@@ -1,7 +1,11 @@
 \documentclass{midl} 
 
+\usepackage{float}
 \usepackage{comment}
 \usepackage{mwe} % to get dummy images
+
+\raggedbottom
+
 \jmlrvolume{}
 \jmlryear{2026}
 \jmlrworkshop{MVA ENS Paris-Saclay - CentraleSupélec} 
@@ -53,11 +57,9 @@ clearly deliver the solution, providing detailed explanations of each step.
 
 \begin{abstract}
 
-Deep learning models for computational pathology often suffer from performance degradation when deployed across medical centers due to domain shifts induced by variations in staining protocols, imaging devices, and tissue preparation. In this work, we address the problem of out-of-distribution (OOD) generalization for histopathology patch classification in the context of a multi-center setting. We propose a robust pipeline built upon DINOv2 self-supervised vision transformers, combining partial fine-tuning of the backbone with stain-aware data augmentation and test-time augmentation (TTA). 
-
-We systematically investigate the impact of model capacity, fine-tuning depth, and domain generalization techniques such as MixStyle and stain-space augmentations. Through extensive ablation studies and hyperparameter optimization, we show that selectively unfreezing a small number of transformer blocks significantly improves generalization to unseen centers. While advanced augmentation strategies provide marginal gains, we find that a carefully tuned fine-tuning strategy coupled with TTA yields the best performance. 
-
-Our final model achieves strong accuracy on unseen domains, demonstrating that leveraging pretrained representations with controlled adaptation is an effective approach to mitigate domain shift in histopathology. These results highlight the importance of balancing invariance and adaptability when designing models for real-world clinical deployment. The full code is available at: \url{https://github.com/JeanJNMV/MVA-DLMI_HistopathologyChallenge}.
+Deep learning models in computational pathology often lose performance across medical centers due to differences in staining, imaging, and tissue preparation. This work tackles out-of-distribution generalization for histopathology patch classification using a DINOv2-based pipeline with partial fine-tuning, stain-aware augmentation, and test-time augmentation (TTA).
+Experiments show that selectively fine-tuning a few transformer layers significantly improves generalization to unseen centers, while advanced augmentations offer limited gains. The best results come from combining careful fine-tuning with TTA.
+Overall, the study demonstrates that controlled adaptation of pretrained models effectively mitigates domain shift in histopathology. The full code is available at: \url{https://github.com/JeanJNMV/MVA-DLMI_HistopathologyChallenge}.
 
 \end{abstract}
 
@@ -133,25 +135,25 @@ Second, partially fine-tuning the backbone proves crucial. Allowing a small numb
 Finally, test-time augmentation (TTA) consistently improves performance across all configurations. The gains are systematic and non-negligible, confirming that averaging predictions over geometric transformations reduces variance and improves robustness to distribution shifts. This makes TTA a simple yet effective component of the final pipeline.
 
 
-\begin{figure}[htbp]
+\begin{figure}[b]
   \centering
   \begin{minipage}{0.45\textwidth}
     \centering
     \includegraphics[width=\linewidth]{img/valacc_no_tta.png}
-    \caption{This is the first image.}
+    \caption{Validation accuracy \textbf{without TTA}.}
     \label{fig:image1}
   \end{minipage}\hfill
   \begin{minipage}{0.45\textwidth}
     \centering
     \includegraphics[width=\linewidth]{img/valacc_tta.png}
-    \caption{This is the second image.}
+    \caption{Validation accuracy \textbf{with TTA}.}
     \label{fig:image2}
   \end{minipage}
 \end{figure}
 
 Building on these observations, we performed a more in-depth hyperparameter optimization using Optuna. This search jointly explored architectural and optimization parameters, including learning rates for the head and backbone, number of unfrozen layers, augmentation strategies, and batch size. The best configuration obtained is summarized in Table~\ref{tab:best_config}. 
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering
 \caption{Best configuration obtained after hyperparameter optimization.}
 \label{tab:best_config}
@@ -178,8 +180,6 @@ Interestingly, the optimal configuration does not rely on the additional domain 
 \section{Conclusion}
 
 In this work, we tackled the problem of out-of-distribution generalization in histopathology image classification across acquisition centers. We proposed a pipeline combining a pretrained DINOv2 backbone with partial fine-tuning, stain-space data augmentation, and test-time augmentation. Through systematic experimentation and hyperparameter optimization, we identified a configuration that achieves strong performance on the validation set, demonstrating the effectiveness of our approach in mitigating domain shift. Future work could explore more advanced domain adaptation techniques, such as adversarial training or meta-learning, to further enhance robustness to unseen centers.
-
-
 
 
 \clearpage  
