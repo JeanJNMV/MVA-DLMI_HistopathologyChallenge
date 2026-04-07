@@ -1,80 +1,79 @@
 import torch
 import numpy as np
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 
-def train_one_epoch(model, dataloader, optimizer, criterion, metric, device):
-    """Run one training epoch.
+def _forward_with_loss(model, x, y, criterion, device):
+    x = x.to(device)
+    y = y.float().to(device)
 
-    Parameters
-    ----------
-    model : torch.nn.Module
-        Model to train.
-    dataloader : torch.utils.data.DataLoader
-        Training dataloader yielding "(inputs, labels)" batches.
-    optimizer : torch.optim.Optimizer
-        Optimizer used for parameter updates.
-    criterion : callable
-        Loss function.
-    metric : callable
-        Metric function returning a scalar score.
-    device : torch.device
-        Device to run training on.
+    if isinstance(criterion, torch.nn.BCEWithLogitsLoss) and hasattr(
+        model, "forward_logits"
+    ):
+        logits = model.forward_logits(x).squeeze(1)
+        pred = torch.sigmoid(logits)
+        loss = criterion(logits, y)
+    else:
+        pred = model(x).squeeze(1)
+        loss = criterion(pred, y)
 
-    Returns
-    -------
-    avg_loss : float
-        Mean training loss over the epoch.
-    avg_metric : float
-        Mean training metric over the epoch.
-    """
+    return pred, loss
+
+
+def _compute_epoch_metric(metric, preds, targets):
+    if all(hasattr(metric, attr) for attr in ("reset", "update", "compute")):
+        metric.reset()
+        metric.update(preds, targets)
+        value = metric.compute().item()
+        metric.reset()
+        return value
+
+    return (preds.round().int() == targets).float().mean().item()
+
+
+def train_one_epoch(model, dataloader, optimizer, criterion, metric, device, scaler=None):
     model.train()
-    losses, metrics = [], []
+    losses = []
+    preds_epoch, targets_epoch = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Training"):
         optimizer.zero_grad()
-        pred = model(x.to(device)).squeeze(1)
-        loss = criterion(pred, y.float().to(device))
-        loss.backward()
-        optimizer.step()
+        if scaler is not None:
+            with torch.amp.autocast(device_type="cuda"):
+                pred, loss = _forward_with_loss(model, x, y, criterion, device)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            pred, loss = _forward_with_loss(model, x, y, criterion, device)
+            loss.backward()
+            optimizer.step()
         losses.extend([loss.item()] * len(y))
-        m = metric(pred.cpu(), y.int().cpu())
-        metrics.extend([m.item()] * len(y))
-    return np.mean(losses), np.mean(metrics)
+        preds_epoch.append(pred.detach().cpu())
+        targets_epoch.append(y.int().cpu())
+
+    preds_epoch = torch.cat(preds_epoch)
+    targets_epoch = torch.cat(targets_epoch)
+    return np.mean(losses), _compute_epoch_metric(metric, preds_epoch, targets_epoch)
 
 
 @torch.no_grad()
-def validate(model, dataloader, criterion, metric, device):
-    """Run validation.
-
-    Parameters
-    ----------
-    model : torch.nn.Module
-        Model to evaluate.
-    dataloader : torch.utils.data.DataLoader
-        Validation dataloader yielding "(inputs, labels)" batches.
-    criterion : callable
-        Loss function.
-    metric : callable
-        Metric function returning a scalar score.
-    device : torch.device
-        Device to run evaluation on.
-
-    Returns
-    -------
-    avg_loss : float
-        Mean validation loss.
-    avg_metric : float
-        Mean validation metric.
-    """
+def validate(model, dataloader, criterion, metric, device, use_amp=False):
     model.eval()
-    losses, metrics = [], []
+    losses = []
+    preds_epoch, targets_epoch = [], []
     for x, y in tqdm(dataloader, leave=False, desc="Validating"):
-        pred = model(x.to(device)).squeeze(1)
-        loss = criterion(pred, y.float().to(device))
+        if use_amp:
+            with torch.amp.autocast(device_type="cuda"):
+                pred, loss = _forward_with_loss(model, x, y, criterion, device)
+        else:
+            pred, loss = _forward_with_loss(model, x, y, criterion, device)
         losses.extend([loss.item()] * len(y))
-        m = metric(pred.cpu(), y.int().cpu())
-        metrics.extend([m.item()] * len(y))
-    return np.mean(losses), np.mean(metrics)
+        preds_epoch.append(pred.detach().cpu())
+        targets_epoch.append(y.int().cpu())
+
+    preds_epoch = torch.cat(preds_epoch)
+    targets_epoch = torch.cat(targets_epoch)
+    return np.mean(losses), _compute_epoch_metric(metric, preds_epoch, targets_epoch)
 
 
 def train(
@@ -88,41 +87,20 @@ def train(
     num_epochs=100,
     patience=10,
     save_path=None,
+    use_amp=True,
 ):
-    """Full training loop with early stopping.
+    scaler = (
+        torch.amp.GradScaler(device="cuda")
+        if (use_amp and device.type == "cuda")
+        else None
+    )
+    if scaler is not None:
+        print("AMP enabled (float16 mixed precision)")
 
-    Training stops when the validation loss does not improve for
-    "patience" consecutive epochs.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epochs, eta_min=1e-7
+    )
 
-    Parameters
-    ----------
-    model : torch.nn.Module
-        Model to train.
-    train_dataloader : torch.utils.data.DataLoader
-        Training dataloader.
-    val_dataloader : torch.utils.data.DataLoader
-        Validation dataloader.
-    optimizer : torch.optim.Optimizer
-        Optimizer used for parameter updates.
-    criterion : callable
-        Loss function.
-    metric : callable
-        Metric function returning a scalar score.
-    device : torch.device
-        Device to run training on.
-    num_epochs : int, optional
-        Maximum number of training epochs.
-    patience : int, optional
-        Number of epochs without improvement before stopping.
-    save_path : str or None, optional
-        Path to save the best model weights. No saving when "None".
-
-    Returns
-    -------
-    dict
-        Training history with keys "'train_loss'", "'val_loss'",
-        "'train_metric'", and "'val_metric'".
-    """
     history = {
         "train_loss": [],
         "val_loss": [],
@@ -134,11 +112,15 @@ def train(
 
     for epoch in range(num_epochs):
         train_loss, train_metric = train_one_epoch(
-            model, train_dataloader, optimizer, criterion, metric, device
+            model, train_dataloader, optimizer, criterion, metric, device,
+            scaler=scaler,
         )
         val_loss, val_metric = validate(
-            model, val_dataloader, criterion, metric, device
+            model, val_dataloader, criterion, metric, device,
+            use_amp=(scaler is not None),
         )
+
+        scheduler.step()
 
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
