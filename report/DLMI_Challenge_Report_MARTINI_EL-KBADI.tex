@@ -91,7 +91,7 @@ Second, partially fine-tuning the backbone proves crucial. Allowing a small numb
 Finally, test-time augmentation (TTA) consistently improves performance across all configurations. The gains are systematic and non-negligible, confirming that averaging predictions over geometric transformations reduces variance and improves robustness to distribution shifts. This makes TTA a simple yet effective component of the final pipeline.
 
 
-\begin{figure}[b]
+\begin{figure}[htbp]
   \centering
   \begin{minipage}{0.45\textwidth}
     \centering
@@ -112,28 +112,6 @@ Since the challenge targets generalization to unseen acquisition centers, we imp
 
 \paragraph{Hyperparameter optimization.}
 Building on these observations, we performed a more in-depth hyperparameter optimization using Optuna. This search jointly explored architectural and optimization parameters, including learning rates for the head and backbone, number of unfrozen layers, augmentation strategies, and batch size. The best configuration obtained is summarized in Table~\ref{tab:best_config}. 
-
-\begin{table}[H]
-\centering
-\caption{Best configuration obtained after hyperparameter optimization.}
-\label{tab:best_config}
-\begin{tabular}{ll}
-\bfseries Parameter & \bfseries Value \\
-\hline
-Model & \texttt{dinov2\_vitl14} \\
-Number of unfrozen layers & 5 \\
-Use MixStyle & False \\
-MixStyle probability ($p$) & 0.5 \\
-MixStyle alpha ($\alpha$) & 0.1 \\
-Head learning rate & $1.36 \times 10^{-3}$ \\
-Backbone learning rate & $6.25 \times 10^{-6}$ \\
-Batch size & 32 \\
-HED jittering strength ($\theta$) & 0.065 \\
-Use StainMix & False \\
-StainMix alpha & 0.3 \\
-Stain bank size & 1000 \\
-\end{tabular}
-\end{table}
 
 Interestingly, the optimal configuration does not rely on the additional domain generalization techniques such as MixStyle or StainMix, suggesting that the combination of partial fine-tuning, careful learning rate tuning, and TTA is sufficient to achieve strong generalization. The selected model (\texttt{dinov2\_vitl14} with 5 unfrozen layers) provides an effective balance between performance and computational cost, reaching a validation accuracy of $0.9559$, which constitutes our best result.
 
@@ -167,5 +145,28 @@ In this work, we tackled the problem of out-of-distribution generalization in hi
   {\includegraphics[width=\linewidth]{img/umap.png}}
 \end{figure}
 
+\section{Details on the Final Configuration}
+
+\begin{table}[H]
+\centering
+\caption{Best configuration obtained after hyperparameter optimization.}
+\label{tab:best_config}
+\begin{tabular}{ll}
+\bfseries Parameter & \bfseries Value \\
+\hline
+Model & \texttt{dinov2\_vitl14} \\
+Number of unfrozen layers & 5 \\
+Use MixStyle & False \\
+MixStyle probability ($p$) & 0.5 \\
+MixStyle alpha ($\alpha$) & 0.1 \\
+Head learning rate & $1.36 \times 10^{-3}$ \\
+Backbone learning rate & $6.25 \times 10^{-6}$ \\
+Batch size & 32 \\
+HED jittering strength ($\theta$) & 0.065 \\
+Use StainMix & False \\
+StainMix alpha & 0.3 \\
+Stain bank size & 1000 \\
+\end{tabular}
+\end{table}
 
 \end{document}
